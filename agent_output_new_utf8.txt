@@ -1,0 +1,70 @@
+﻿python : C:\Users\hbhav\App
+Data\Local\Programs\Python\
+Python312\Lib\site-packages
+\ag_ui_adk\adk_agent.py:157
+: UserWarning: 
+[EXPERIMENTAL] 
+InMemoryCredentialService: 
+This feature is 
+experimental and may 
+change or be removed in 
+future versions without 
+notice. It may introduce 
+breaking changes at any 
+time.
+At line:1 char:1
++ python agent/main.py > 
+agent_output_new.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecifi    ed: 
+(C:\Users\hbha    v\...es 
+at any tim    e.:String) 
+[], Rem    oteException
+    + FullyQualifiedEr    
+rorId : NativeComm    
+andError
+ 
+  self._credential_service 
+= credential_service or 
+InMemoryCredentialService()
+C:\Users\hbhav\AppData\Loca
+l\Programs\Python\Python312
+\Lib\site-packages\google\a
+dk\auth\credential_service\
+in_memory_credential_servic
+e.py:33: UserWarning: 
+[EXPERIMENTAL] 
+BaseCredentialService: 
+This feature is 
+experimental and may 
+change or be removed in 
+future versions without 
+notice. It may introduce 
+breaking changes at any 
+time.
+  super().__init__()
+INFO:     Started server 
+process [6868]
+INFO:     Waiting for 
+application startup.
+INFO:     Application 
+startup complete.
+ERROR:    [Errno 10048] 
+error while attempting to 
+bind on address 
+('0.0.0.0', 8000): only 
+one usage of each socket 
+address (protocol/network 
+address/port) is normally 
+permitted
+INFO:     Waiting for 
+application shutdown.
+INFO:     Application 
+shutdown complete.
+Starting Fristine Agent Server on port 8000
+  Agent 1 (Main)    -> POST http://localhost:8000/
+  Agent 2 (Vision)  -> POST http://localhost:8000/vision/analyse
+  Agent 3 (Refiner) -> POST http://localhost:8000/refine/
+  Health            -> GET  http://localhost:8000/health
