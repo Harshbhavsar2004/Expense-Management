@@ -5,13 +5,15 @@
 import type { ExpenseSession, ExtractedReceiptData, ReceiptMismatch } from "./types";
 import { getSession, setSession, clearSession } from "./session";
 import { sendText, sendCard, sendList, sendImageCard, downloadMedia } from "./whatsapp";
-import { analyseReceipt } from "./vision";
+import { analyseReceipt, predictCategory } from "./vision";
 import { logExpenseRecord } from "./logger";
 import { triggerAudit } from "./agent";
+import { getUserApplications, saveApplicationToSupabase } from "./db";
+import { getCityTier } from "./city-tool";
 
 const LOGO_URL =
   process.env.FRISTINE_LOGO_URL ||
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Culinary_fruits_front_view.jpg/1200px-Culinary_fruits_front_view.jpg";
+  "https://fristinetech.com/wp-content/uploads/2023/05/Fristine-Infotech-Website-Logo.png";
 
 // ── Welcome card ──────────────────────────────────────────────────────────────
 export async function sendWelcomeCard(to: string, userName?: string): Promise<void> {
@@ -22,44 +24,9 @@ export async function sendWelcomeCard(to: string, userName?: string): Promise<vo
     `Hello, ${name}.\n\nYou are connected to the *Fristine Infotech Expense Management System*.\n\nThis platform allows you to submit, track, and review business expenses directly from WhatsApp.\n\nHow may I assist you today?`,
     "Fristine Infotech · Expense Management",
     [
-      { id: "ADD_EXPENSE",   label: "Submit Expense"  },
-      { id: "VIEW_EXPENSES", label: "View History"    },
-    ]
-  );
-}
-
-// ── Expense type list ─────────────────────────────────────────────────────────
-async function sendExpenseTypeList(to: string): Promise<void> {
-  await sendList(
-    to,
-    "Step 2 of 6 · Expense Category",
-    "Select the category that best describes this expense.\n\nAll submissions are recorded for reimbursement processing.",
-    "Fristine Infotech · Expense Management",
-    "Select Category",
-    [{
-      title: "Expense Categories",
-      rows: [
-        { id: "TRAVEL",        title: "Travel Expenses",     description: "Flights, trains, taxis, fuel" },
-        { id: "FOOD",          title: "Meals",               description: "Client meals, team lunches"    },
-        { id: "ACCOMMODATION", title: "Hotel Accommodation", description: "Hotels, lodging"               },
-        { id: "OFFICE",        title: "Office Supplies",description: "Stationery, equipment"         },
-        { id: "COMMUNICATION", title: "Communication",  description: "Phone, internet, courier"      },
-        { id: "MISCELLANEOUS", title: "Miscellaneous",  description: "Any other business expense"    },
-      ],
-    }]
-  );
-}
-
-// ── Participant selector ──────────────────────────────────────────────────────
-async function sendParticipantCard(to: string): Promise<void> {
-  await sendCard(
-    to,
-    "Step 1: Participants",
-    "Was this expense incurred for yourself only, or does it cover multiple team members?",
-    "Fristine Infotech · Expense Management",
-    [
-      { id: "SINGLE_PERSON",   label: "Only Me"          },
-      { id: "MULTIPLE_PERSONS",label: "Multiple People"  },
+      { id: "CREATE_EXP_REPORT", label: "Create Report" },
+      { id: "ADD_EXPENSE",       label: "Add Expense"           },
+      { id: "VIEW_HISTORY",      label: "View History"          },
     ]
   );
 }
@@ -73,12 +40,9 @@ export function detectMismatches(session: ExpenseSession): ReceiptMismatch {
   const claimed = session.amountNumeric ?? 0;
   const amountMismatch = claimed > 0 && totalExtracted > 0 && Math.abs(totalExtracted - claimed) >= 1;
 
-  // Date check: compare session.dateRange with any receipt date
+  // Date check
   let dateMismatch = false;
   const sessionDateStr = (session.dateRange ?? "").toLowerCase();
-
-  // Only flag date mismatch if the user entered a specific date (not a range phrase)
-  // and the receipt has a date that differs
   const firstReceiptDate = receipts[0]?.date;
   if (
     firstReceiptDate &&
@@ -86,10 +50,8 @@ export function detectMismatches(session: ExpenseSession): ReceiptMismatch {
     !sessionDateStr.includes("–") &&
     !sessionDateStr.includes("-")
   ) {
-    // Normalize both to compare (rough check)
     const receiptLower = firstReceiptDate.toLowerCase();
     const sessionLower = sessionDateStr.toLowerCase();
-    // If they share no common tokens (day/month/year), flag as mismatch
     const sessionTokens = sessionLower.split(/\s+/);
     const matched = sessionTokens.some((t) => receiptLower.includes(t) && t.length > 2);
     if (!matched) dateMismatch = true;
@@ -127,33 +89,79 @@ function buildVerificationBody(session: ExpenseSession, mismatch: ReceiptMismatc
   receipts.forEach((r, i) => {
     if (receipts.length > 1) lines.push(`_Receipt ${i + 1} of ${receipts.length}_`);
     lines.push(`*Date:* ${r.date ?? "—"}`);
+    lines.push(`*Time:* ${r.transactionTime ?? "—"}`);
     lines.push(`*Amount:* ${r.amount ?? "—"}`);
     lines.push(`*Merchant:* ${r.merchant ?? "—"}`);
-    lines.push(`*Category:* ${r.merchantCategory ?? "—"}`);
+    lines.push(`*Category:* ${r.merchantCategory ?? "Miscellaneous"}`);
+    lines.push(`*UTR:* ${r.utrNumber ?? "—"}`);
     if (receipts.length > 1 && i < receipts.length - 1) lines.push("");
   });
 
-  lines.push("\nPlease confirm the details above are accurate, or add a category manually.");
+  lines.push("\nPlease confirm the details above are accurate.");
   return lines.join("\n");
 }
 
 // ── Build confirmation summary ────────────────────────────────────────────────
 function buildConfirmationBody(session: ExpenseSession): string {
   const r = session.extractedReceipts?.[0];
-  const participants =
-    session.personType === "single"
-      ? "Self"
-      : `${session.personNames?.join(", ")} (${session.personCount} persons)`;
-
   return [
     "*Expense Submitted Successfully*\n",
+    `Application ID: ${session.applicationId}`,
     `Date: ${r?.date || "—"}`,
     `Merchant: ${r?.merchant || "—"}`,
-    `Category: ${r?.merchantCategory || "—"}`,
     `Amount: ${r?.amount || session.amount || "—"}`,
-    `Participants: ${participants}`,
     `\nYour expense has been recorded in Supabase.`,
   ].join("\n");
+}
+
+// ── Generate memorable ID ─────────────────────────────────────────────────────
+function generateAppId(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; 
+  let result = "";
+  for (let i = 0; i < 4; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `EXP-${result}`;
+}
+
+// ── Finalize Application Creation ─────────────────────────────────────────────
+async function finalizeApplication(phone: string, session: ExpenseSession, supabaseClient?: any): Promise<void> {
+  session.applicationId = generateAppId();
+  session.step = "idle";
+  
+  await saveApplicationToSupabase({
+    userPhone: phone,
+    applicationId: session.applicationId,
+    clientName: session.clientName || "Unknown",
+    visitDuration: session.visitDuration || "Unknown",
+    city: session.city || "Unknown",
+    cityTier: session.cityTier || "Tier - III",
+    participantCount: session.appParticipantCount || 1,
+    participantDetails: session.appParticipantDetails || []
+  }, session.userId, supabaseClient);
+
+  const participantsStr = session.appParticipantCount && session.appParticipantCount > 1
+    ? `\n*Participants:* ${session.appParticipantCount}`
+    : "";
+
+  const msg = [
+    `*Application Created Successfully!*`,
+    ``,
+    `*ID:* ${session.applicationId}`,
+    `*Client:* ${session.clientName}`,
+    `*Duration:* ${session.visitDuration}`,
+    `*City:* ${session.city} (${session.cityTier})${participantsStr}`,
+    ``,
+    `You can now use this ID to add expenses.`,
+  ].join("\n");
+
+  await sendCard(phone, "Success", msg, "Fristine Infotech", [
+    { id: "ADD_EXPENSE", label: "Add Expense" },
+    { id: "MAIN_MENU",   label: "Main Menu"   },
+  ]);
+  
+  const { setSession } = await import("./session");
+  setSession(phone, session);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,76 +174,104 @@ export async function handleExpenseFlow(
   buttonId?: string,
   mediaId?: string,
   mediaMimeType?: string,
-  mediaBase64?: string
+  mediaBase64?: string,
+  supabaseClient?: any
 ): Promise<void> {
   const input = buttonId || incomingText.trim();
 
   switch (session.step) {
 
-    // ── STEP 1: PARTICIPANTS ─────────────────────────────────────────────────
-    case "awaiting_single_or_multiple": {
-      if (input === "SINGLE_PERSON") {
-        session.personType = "single";
-        session.personNames = ["Self"];
-        session.personCount = 1;
-        session.step = "awaiting_city";
-        setSession(phone, session);
-        await sendText(phone, "*Step 1.5: City Location*\n\nPlease enter the name of the city you visited.");
-      } else if (input === "MULTIPLE_PERSONS") {
-        session.personType = "multiple";
-        session.step = "awaiting_person_count";
-        setSession(phone, session);
-        await sendText(phone,
-          "*Step 1a · Number of Participants*\n\nHow many people does this expense cover?\n\nEnter a number (minimum 2)."
-        );
-      } else {
-        await sendParticipantCard(phone);
-      }
-      break;
-    }
-
-    case "awaiting_person_count": {
-      const count = parseInt(incomingText.trim(), 10);
-      if (isNaN(count) || count < 2) {
-        await sendText(phone, "Please enter a number of 2 or more.");
-        return;
-      }
-      session.personCount = count;
-      session.step = "awaiting_person_names";
+    // ── CREATE EXPENSE REPORT FLOW ──────────────────────────────────────────
+    case "awaiting_app_client": {
+      session.clientName = incomingText.trim();
+      session.step = "awaiting_app_duration";
       setSession(phone, session);
-      await sendText(phone,
-        `*Step 1b · Participant Names*\n\nEnter the full names of all *${count} participants*, separated by commas.`
-      );
+      await sendText(phone, "*Step 2: Duration*\n\nPlease enter the duration of the visit (e.g., '10 Mar 2026 - 15 Mar 2026').");
       break;
     }
 
-    case "awaiting_person_names": {
-      const names = incomingText.split(",").map((n) => n.trim()).filter(Boolean);
-      if (session.personCount && names.length !== session.personCount) {
-        await sendText(phone,
-          `You indicated *${session.personCount} participants* but provided *${names.length} name(s)*.\n\nPlease re-enter all ${session.personCount} names separated by commas.`
-        );
-        return;
-      }
-      session.personNames = names;
-      session.step = "awaiting_city";
+    case "awaiting_app_duration": {
+      session.visitDuration = incomingText.trim();
+      session.step = "awaiting_app_city";
       setSession(phone, session);
-      await sendText(phone, "*Step 1.5: City Location*\n\nPlease enter the name of the city you visited.");
+      await sendText(phone, "*Step 3: City*\n\nPlease enter the name of the city you are visiting.");
       break;
     }
 
-    // ── STEP 1.5: CITY ──────────────────────────────────────────────────────
-    case "awaiting_city": {
-      const city = incomingText.trim();
-      const { getCityTier } = await import("./city-tool");
-      const tier = getCityTier(city);
+    case "awaiting_app_city": {
+      session.city = incomingText.trim();
+      session.cityTier = getCityTier(session.city);
       
-      session.city = city;
-      session.cityTier = tier;
+      await sendCard(phone, "Participants", "Is this trip for you only or are there multiple participants?", "Fristine Infotech", [
+        { id: "PARTICIPANTS_SELF",  label: "Just Me"           },
+        { id: "PARTICIPANTS_MULTI", label: "Multiple People"   },
+      ]);
+      
+      session.step = "awaiting_app_participants_count";
+      setSession(phone, session);
+      break;
+    }
+
+    case "awaiting_app_participants_count": {
+      if (input === "PARTICIPANTS_SELF") {
+        session.appParticipantCount = 1;
+        session.appParticipantDetails = [];
+        // Finalize application
+        return finalizeApplication(phone, session, supabaseClient);
+      } else if (input === "PARTICIPANTS_MULTI") {
+        await sendText(phone, "Please enter the number of participants (including yourself):");
+        // Keep step but wait for number
+        return;
+      }
+      
+      const count = parseInt(incomingText.trim());
+      if (isNaN(count) || count < 1) {
+        await sendText(phone, "Please enter a valid number (e.g., 2, 3, 4).");
+        return;
+      }
+      
+      session.appParticipantCount = count;
+      await sendText(phone, `Please enter the names and mobile numbers of the other ${count - 1} participants.\nFormat:\nName - Number\nName - Number`);
+      session.step = "awaiting_app_participants_details";
+      setSession(phone, session);
+      break;
+    }
+
+    case "awaiting_app_participants_details": {
+      const lines = incomingText.trim().split("\n");
+      const details = lines.map(line => {
+        const [name, phone] = line.split("-").map(s => s.trim());
+        return { name: name || "Unknown", phone: phone || "Unknown" };
+      }).filter(d => d.name !== "Unknown");
+
+      session.appParticipantDetails = details;
+      return finalizeApplication(phone, session, supabaseClient);
+    }
+
+    // ── ADD EXPENSE FLOW (App Selection) ────────────────────────────────────
+    case "awaiting_app_selection_add": {
+      session.applicationId = incomingText.trim().toUpperCase();
       session.step = "awaiting_receipt";
       setSession(phone, session);
+      await sendText(phone, `*App Selected: ${session.applicationId}*\n\n*Step 2: Upload Receipt*\n\nPlease upload the UPI screenshot or payment receipt.`);
+      break;
+    }
+
+    // ── VIEW HISTORY FLOW (App Selection) ───────────────────────────────────
+    case "awaiting_app_selection_view": {
+      const appId = incomingText.trim().toUpperCase();
+      const { getExpensesByApplication } = await import("./db");
+      const rows = await getExpensesByApplication(phone, appId, session.userId, supabaseClient);
       
-      await sendText(phone, `*City:* ${city} (${tier})\n\n*Step 2: Upload Receipt*\n\nPlease upload the UPI screenshot or payment receipt.`);
+      if (rows.length === 0) {
+        await sendText(phone, `No expenses found for Application ID: *${appId}*.`);
+      } else {
+        let summary = rows.map((r, i) => `*${i+1}.* ${r.expense_type} - ${r.claimed_amount}\n   ${new Date(r.created_at).toLocaleDateString("en-IN")}`).join("\n\n");
+        await sendText(phone, `*History for ${appId}*\n\n${summary}`);
+      }
+      
+      session.step = "idle";
+      setSession(phone, session);
       break;
     }
 
@@ -249,11 +285,15 @@ export async function handleExpenseFlow(
       await sendText(phone, "_Extracting data from screenshot..._");
       const extracted = await analyseReceipt(mediaBase64, mediaMimeType);
       
-      // Categorize merchant
-      const { getMerchantCategory } = await import("./merchant-tool");
-      if (extracted.merchant) {
-         extracted.merchantCategory = getMerchantCategory(extracted.merchant);
-      }
+      extracted.transactionTime = (extracted as any).time;
+
+      // Predict category using new agent
+      const prediction = await predictCategory(
+        extracted.merchant || "Unknown",
+        extracted.date || "Unknown",
+        extracted.transactionTime || "Unknown"
+      );
+      extracted.merchantCategory = prediction.category;
 
       session.receiptMediaIds = [mediaId];
       session.extractedReceipts = [extracted];
@@ -267,7 +307,6 @@ export async function handleExpenseFlow(
       break;
     }
 
-    // ── STEP 3: VERIFICATION / MANUAL CATEGORY ──────────────────────────────
     case "awaiting_manual_category": {
       if (session.extractedReceipts && session.extractedReceipts.length > 0) {
         session.extractedReceipts[0].merchantCategory = incomingText.trim();
@@ -279,7 +318,13 @@ export async function handleExpenseFlow(
     }
 
     case "awaiting_verification": {
-      // Handled via buttons in route.ts
+      if (input === "VERIFY_YES") {
+        await finalizeExpense(phone, session, supabaseClient);
+      } else if (input === "ADD_MANUAL_CAT") {
+        session.step = "awaiting_manual_category";
+        setSession(phone, session);
+        await sendText(phone, "Please type the correct category for this expense (e.g., 'Travel', 'Lunch', 'Hotel').");
+      }
       break;
     }
   }
@@ -304,10 +349,9 @@ export async function sendVerificationCard(
   );
 }
 
-export async function finalizeExpense(phone: string, session: ExpenseSession): Promise<void> {
+export async function finalizeExpense(phone: string, session: ExpenseSession, supabaseClient?: any): Promise<void> {
   const { saveExpenseToSupabase } = await import("./db");
   
-  // Transform session to ExpenseRecord for DB
   const record: any = {
     meta: {
       recordedAt: new Date().toISOString(),
@@ -322,10 +366,13 @@ export async function finalizeExpense(phone: string, session: ExpenseSession): P
       subCategory: "", 
       claimedAmount: session.extractedReceipts?.[0]?.amount || "0",
       claimedAmountNumeric: session.extractedReceipts?.[0]?.amountNumeric || 0,
+      applicationId: session.applicationId,
+      clientName: session.clientName,
+      visitDuration: session.visitDuration,
       city: session.city,
       cityTier: session.cityTier,
       participants: {
-        type: session.personType,
+        type: session.personType || "single",
         count: session.personCount || 1,
         names: session.personNames || ["Self"],
       },
@@ -343,18 +390,19 @@ export async function finalizeExpense(phone: string, session: ExpenseSession): P
         paymentMethod: r.paymentMethod || "",
         merchant: r.merchant || "",
         transactionDate: r.date || "",
+        transactionTime: r.transactionTime || "",
         status: r.status || "",
         rawDescription: r.rawDescription || "",
       })),
     },
     verification: {
-      verified: false, // Default to false until audit confirms
+      verified: false,
       verifiedAt: new Date().toISOString(),
       mismatches: [],
     },
   };
-
-  const expenseId = await saveExpenseToSupabase(record);
+  
+  const expenseId = await saveExpenseToSupabase(record, session.userId, supabaseClient);
 
   clearSession(phone);
 
@@ -365,11 +413,10 @@ export async function finalizeExpense(phone: string, session: ExpenseSession): P
     "Fristine Infotech · Expense Management",
     [
       { id: "ADD_EXPENSE",   label: "New Expense"   },
-      { id: "VIEW_EXPENSES", label: "View History"  },
+      { id: "VIEW_HISTORY", label: "View History"  },
     ]
   );
 
-  // ── Trigger Automated Audit & Notify ──
   if (expenseId) {
     try {
       console.log(`[Flow] Triggering auto-audit for ${expenseId}`);
@@ -389,7 +436,31 @@ export async function finalizeExpense(phone: string, session: ExpenseSession): P
   }
 }
 
-// ── View expenses / report ────────────────────────────────────────────────────
+export async function sendAppList(to: string, step: "awaiting_app_selection_add" | "awaiting_app_selection_view", supabaseClient?: any): Promise<void> {
+  const session = getSession(to);
+  const apps = await getUserApplications(to, session.userId, supabaseClient);
+  
+  if (apps.length === 0) {
+    await sendText(to, "No expense reports found. Please create one first.");
+    return;
+  }
+
+  await sendList(
+    to,
+    "Select Application",
+    "Please select the Application ID related to this request.",
+    "Fristine Infotech",
+    "Select App",
+    [{
+      title: "Recent Applications",
+      rows: apps.slice(0, 10).map(id => ({ id, title: id }))
+    }]
+  );
+  
+  session.step = step;
+  setSession(to, session);
+}
+
 export async function sendExpenseMenu(phone: string): Promise<void> {
   await sendCard(
     phone,

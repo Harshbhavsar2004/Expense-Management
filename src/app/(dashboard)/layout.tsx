@@ -1,31 +1,48 @@
 "use client";
 
-import { Sidebar } from "@/components/Sidebar";
-import { TopBar } from "@/components/TopBar";
-import { usePathname } from "next/navigation";
+import Sidebar from "@/components/Sidebar";
+import { TopBar } from "@/components/TopBar"; // if they still have it, we keep it if they want? Wait, the new SidebarDemo includes its own Header and Content Area!
+import { LoadingScreen } from "@/components/LoadingScreen";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { createClient } from "@/utils/supabase/client";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [checkingProfile, setCheckingProfile] = useState(true);
+  const router = useRouter();
   const pathname = usePathname();
-  const activeTab = pathname === "/" ? "dashboard" : pathname.replace("/", "");
+
+  useEffect(() => {
+    async function checkProfile() {
+      try {
+        const res = await fetch("/api/user/profile");
+        const profile = await res.json();
+        
+        if (res.ok && !profile.phone && pathname !== "/settings") {
+          // If phone is missing and they aren't on settings, send them there
+          router.push("/settings?force=true");
+        }
+      } catch (err) {
+        console.error("Error checking profile:", err);
+      } finally {
+        setCheckingProfile(false);
+        setIsLoading(false);
+      }
+    }
+
+    checkProfile();
+  }, [pathname, router]);
+
+  if (checkingProfile && isLoading) {
+    return <LoadingScreen onComplete={() => {}} />;
+  }
 
   return (
-    <main className="flex h-screen bg-primary overflow-hidden">
-      <Sidebar active={activeTab} />
-      
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar 
-          orgName="Fristine Infotech" 
-          title={activeTab === "dashboard" ? "Overview" : "Claims Management"} 
-        />
-        
-        <div style={{ flex: 1, overflowY: "auto", position: "relative" }}>
+    <>
+      <Sidebar>
           {children}
-        </div>
-      </div>
-    </main>
+      </Sidebar>
+    </>
   );
 }

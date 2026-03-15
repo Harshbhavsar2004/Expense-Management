@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// city-tool.ts — City Tier Categorization
-// ─────────────────────────────────────────────────────────────────────────────
-
 const TIER_I_CITIES = [
   "mumbai", "delhi", "bengaluru", "bangalore", "chennai", "hyderabad", 
   "ahmedabad", "kolkata", "pune"

@@ -23,77 +23,89 @@ export function ExpenseCard({ record, selected, onClick }: ExpenseCardProps) {
         alignItems: "center",
         justifyContent: "space-between",
         cursor: "pointer",
-        borderLeft: selected ? "4px solid var(--accent)" : "1px solid var(--border)",
-        background: selected ? "var(--bg-tertiary)" : "var(--bg-card)",
+        borderLeft: selected ? "4px solid var(--accent)" : "1.5px solid var(--border)",
+        borderTop: "1.5px solid var(--border)",
+        borderRight: "1.5px solid var(--border)",
+        borderBottom: "1.5px solid var(--border)",
+        background: selected ? "var(--accent-light)" : "var(--bg-card)",
+        transform: selected ? "translateX(4px)" : "none",
         transition: "all var(--transition)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "24px", flex: 1 }}>
         {/* Date & User */}
         <div style={{ minWidth: "120px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
+          <div className="typo-overline mb-1 flex items-center gap-[6px] text-slate-500!">
             <Calendar size={12} />
             <span>{new Date(record.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</span>
+            {record.receipts?.[0]?.transaction_time && (
+              <span className="typo-caption opacity-80">· {record.receipts[0].transaction_time}</span>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--bg-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700, color: "var(--accent)" }}>
+            <div className="typo-overline" style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--bg-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>
               {record.user_name?.[0] || 'U'}
             </div>
-            <span style={{ fontWeight: 600 }}>{record.user_name || record.user_phone?.slice(-4)}</span>
+            <span className="typo-label truncate max-w-[80px] inline-block align-bottom">{record.user_name || record.user_phone?.slice(-4)}</span>
           </div>
         </div>
 
-        {/* Category */}
+        {/* Category & App ID */}
         <div style={{ width: "160px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
+          <div className="typo-overline mb-1 flex items-center gap-[6px] text-slate-500!">
             <Tag size={12} />
             <span>Category</span>
           </div>
-          <div style={{ fontSize: "14px", fontWeight: 500 }}>
-            {record.expense_type} <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>— {record.sub_category}</span>
+          <div className="typo-body-default font-medium! truncate">
+            {record.expense_type} <span className="typo-caption text-slate-500!">— {record.sub_category}</span>
           </div>
+          {record.application_id && (
+            <div className="typo-caption font-mono! font-semibold!" style={{ marginTop: "4px", color: "var(--accent)", padding: "2px 6px", background: "var(--accent-glow)", borderRadius: "4px", display: "inline-block" }}>
+              {record.application_id}
+            </div>
+          )}
         </div>
 
         {/* City */}
         <div style={{ width: "130px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
+          <div className="typo-overline mb-1 flex items-center gap-[6px] text-slate-500!">
             <Tag size={12} />
             <span>City / Tier</span>
           </div>
-          <div style={{ fontSize: "14px", fontWeight: 500 }}>
-            {record.city || "—"} <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>({record.city_tier || "—"})</span>
+          <div className="typo-body-default font-medium!">
+            {record.city || "—"} <span className="typo-caption text-slate-500!">({record.city_tier || "—"})</span>
           </div>
         </div>
 
         {/* Amount */}
         <div style={{ width: "140px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
+          <div className="typo-overline mb-1 flex items-center gap-[6px] text-slate-500!">
             <IndianRupee size={12} />
             <span>Claimed Amount</span>
           </div>
-          <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)" }}>
+          <div className="typo-body-default font-bold!" style={{ color: "var(--text-primary)" }}>
             ₹{record.claimed_amount_numeric?.toLocaleString("en-IN") || record.claimed_amount}
           </div>
         </div>
 
         {/* Receipt Amount */}
         <div style={{ width: "140px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
+          <div className="typo-overline mb-1 flex items-center gap-[6px] text-slate-500!">
              <ReceiptText size={12} />
             <span>Receipt Total</span>
           </div>
-          <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--success)" }}>
+          <div className="typo-body-default font-bold!" style={{ color: "var(--success)" }}>
             ₹{record.total_receipt_amount?.toLocaleString("en-IN") || '—'}
           </div>
         </div>
 
         {/* Participants */}
         <div style={{ width: "80px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>
+          <div className="typo-overline mb-1 flex items-center gap-[6px] text-slate-500!">
              <Users size={12} />
             <span>Pax</span>
           </div>
-          <div style={{ fontSize: "14px", fontWeight: 500 }}>
+          <div className="typo-body-default font-medium!">
             {record.participant_count || 1}
           </div>
         </div>

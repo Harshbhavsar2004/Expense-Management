@@ -44,9 +44,16 @@ JSON format (return exactly this structure):
   "paymentMethod": "one of: UPI / Net Banking / Credit Card / Debit Card / Cash / Unknown",
   "merchant": "merchant or recipient name if visible - null if not found",
   "date": "transaction date in DD MMM YYYY format if visible - null if not found",
+  "time": "Transaction time in HH:MM AM/PM format (MANDATORY if visible) - null if not found",
   "status": "one of: SUCCESS / FAILED / PENDING / UNKNOWN",
   "rawDescription": "1-2 sentence plain English summary of what this receipt shows"
 }
+
+EXTRACTION GUIDELINES:
+- DATE: Extract even from small font. Look for "on", "dated", or just numbers.
+- TIME: Look for formats like 10:30 AM, 22:15, 08:30 PM. Convert to HH:MM AM/PM. CRITICAL: For PhonePe/GPay screenshots, often the time is in the top notification bar or in the transaction footer. Look carefully.
+- MERCHANT: Look for "Paid to", "Recipient", or the largest bold text at top.
+- CATEGORY: Based on merchant name, if it says 'Tours', 'Travels', 'Taxi' -> Travel. If 'Hotel', 'In', 'Stay' -> Hotel.
 
 STATUS DETECTION RULES:
 - Words like SUCCESS, SUCCESSFUL, PAID, APPROVED, COMPLETED, DEBITED -> "SUCCESS"
@@ -176,11 +183,26 @@ async def analyse_image(request: Request) -> JSONResponse:
 
             try:
                 parsed = json.loads(raw)
-                print(f"[VisionAgent] Extracted receipt (truncated): {json.dumps(parsed)[:500]}")
+                
+                # Ensure all keys exist to prevent frontend errors
+                defaults = {
+                    "amount": None,
+                    "utrNumber": None,
+                    "transactionId": None,
+                    "paymentMethod": "Unknown",
+                    "merchant": None,
+                    "date": None,
+                    "time": None,
+                    "status": "UNKNOWN",
+                    "rawDescription": ""
+                }
+                defaults.update(parsed)
+                
+                print(f"[VisionAgent] Extracted receipt (truncated): {json.dumps(defaults)[:500]}")
                 return JSONResponse({
                     "success": True,
                     "mode": "receipt",
-                    "data": parsed,
+                    "data": defaults,
                 })
             except json.JSONDecodeError as e:
                 print(f"[VisionAgent] JSON parse failed: {e}. Raw (clean): {raw.encode('ascii', 'ignore').decode('ascii')[:500]}")
@@ -194,6 +216,7 @@ async def analyse_image(request: Request) -> JSONResponse:
                         "paymentMethod": "Unknown",
                         "merchant": None,
                         "date": None,
+                        "time": None,
                         "status": "UNKNOWN",
                         "rawDescription": raw[:500],  # Return raw text as description
                     },

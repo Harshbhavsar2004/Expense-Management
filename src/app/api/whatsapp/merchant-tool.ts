@@ -11,13 +11,20 @@ const MERCHANT_CATEGORIES: Record<string, string> = {
   "cafe": "Meals",
   "dining": "Meals",
   "food": "Meals",
-  "bakery": "Meals",
+  "suites": "Hotel Accommodation",
   "sweets": "Meals",
   "kfc": "Meals",
   "mcdonald": "Meals",
   "burger": "Meals",
   "starbucks": "Meals",
   "pizza": "Meals",
+  "oyo": "Hotel Accommodation",
+  "airbnb": "Hotel Accommodation",
+  "lodging": "Hotel Accommodation",
+  "resort": "Hotel Accommodation",
+  "mmyt": "Hotel Accommodation",
+  "makemytrip": "Hotel Accommodation",
+  "goibibo": "Hotel Accommodation",
 
   // Travel Expenses
   "travel": "Travel Expenses",
@@ -42,17 +49,12 @@ const MERCHANT_CATEGORIES: Record<string, string> = {
   "redbus": "Travel Expenses",
   "parking": "Travel Expenses",
   "toll": "Travel Expenses",
+  "tours": "Travel Expenses",
+  "travels": "Travel Expenses",
+  "transport": "Travel Expenses",
+  "auto": "Travel Expenses",
 
-  // Hotel Accommodation
-  "hotel": "Hotel Accommodation",
-  "stay": "Hotel Accommodation",
-  "oyo": "Hotel Accommodation",
-  "airbnb": "Hotel Accommodation",
-  "lodging": "Hotel Accommodation",
-  "resort": "Hotel Accommodation",
-  "mmyt": "Hotel Accommodation",
-  "makemytrip": "Hotel Accommodation",
-  "goibibo": "Hotel Accommodation",
+  // Office & Comm
 
   // Office & Comm
   "amazon": "Office Supplies",

@@ -63,3 +63,28 @@ export async function analyseGeneralImage(
     return "Vision agent unreachable.";
   }
 }
+
+export async function predictCategory(
+  merchant: string,
+  date: string,
+  time: string
+): Promise<{ category: string; reasoning: string }> {
+  console.log("[Vision] Predicting category for:", merchant);
+  try {
+    const res = await fetch(`${AGENT_URL}/category/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ merchant, date, time }),
+    });
+
+    if (!res.ok) return { category: "Miscellaneous", reasoning: "Agent error" };
+    const json = await res.json();
+    return {
+      category: json.category || "Miscellaneous",
+      reasoning: json.reasoning || ""
+    };
+  } catch (e) {
+    console.error("[Vision] Prediction error:", e);
+    return { category: "Miscellaneous", reasoning: "Agent unreachable" };
+  }
+}

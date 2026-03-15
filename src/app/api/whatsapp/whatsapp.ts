@@ -7,6 +7,27 @@ const PHONE_ID    = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const API_VERSION = process.env.WHATSAPP_API_VERSION || "v22.0";
 const BASE_URL    = `https://graph.facebook.com/${API_VERSION}/${PHONE_ID}/messages`;
 
+// ── Web-chat capture mode ─────────────────────────────────────────────────────
+// When a phone number is registered here, outbound messages are stored
+// instead of sent to WhatsApp. The web chat API reads them via popCapture().
+export type WebCapturedMsg =
+  | { type: "text"; body: string }
+  | { type: "card"; header: string; body: string; footer: string; buttons: { id: string; label: string }[] }
+  | { type: "image_card"; imageUrl: string; body: string; footer: string; buttons: { id: string; label: string }[] }
+  | { type: "list"; header: string; body: string; footer: string; buttonLabel: string;
+      sections: { title: string; rows: { id: string; title: string; description?: string }[] }[] };
+
+const _captureStore = new Map<string, WebCapturedMsg[]>();
+
+export function startCapture(phone: string): void {
+  _captureStore.set(phone, []);
+}
+export function popCapture(phone: string): WebCapturedMsg[] {
+  const msgs = _captureStore.get(phone) ?? [];
+  _captureStore.delete(phone);
+  return msgs;
+}
+
 // Small delay to prevent WhatsApp from jumping to the top of the chat
 // when multiple messages are sent in rapid succession.
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -36,6 +57,7 @@ async function post(payload: object): Promise<void> {
 
 // ── Plain text ────────────────────────────────────────────────────────────────
 export async function sendText(to: string, body: string): Promise<void> {
+  if (_captureStore.has(to)) { _captureStore.get(to)!.push({ type: "text", body }); return; }
   await post({
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -53,6 +75,7 @@ export async function sendImageCard(
   footer: string,
   buttons: { id: string; label: string }[]
 ): Promise<void> {
+  if (_captureStore.has(to)) { _captureStore.get(to)!.push({ type: "image_card", imageUrl, body, footer, buttons }); return; }
   await post({
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -81,6 +104,7 @@ export async function sendCard(
   footer: string,
   buttons: { id: string; label: string }[]
 ): Promise<void> {
+  if (_captureStore.has(to)) { _captureStore.get(to)!.push({ type: "card", header, body, footer, buttons }); return; }
   await post({
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -113,6 +137,7 @@ export async function sendList(
     rows: { id: string; title: string; description?: string }[];
   }[]
 ): Promise<void> {
+  if (_captureStore.has(to)) { _captureStore.get(to)!.push({ type: "list", header, body, footer, buttonLabel, sections }); return; }
   await post({
     messaging_product: "whatsapp",
     recipient_type: "individual",

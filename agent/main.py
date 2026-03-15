@@ -27,6 +27,8 @@ from pydantic import BaseModel, Field
 from vision_agent import vision_router, vision_agent
 from input_refiner_agent import input_refiner_agent
 from audit_agent import audit_agent
+from chatbot_agent import chatbot_agent
+from category_backend import category_backend_router
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -63,6 +65,13 @@ adk_vision_agent = ADKAgent(
     use_in_memory_services=True,
 )
 
+adk_chatbot_agent = ADKAgent(
+    adk_agent=chatbot_agent,
+    user_id="chatbot_user",
+    session_timeout_seconds=3600,
+    use_in_memory_services=True,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FASTAPI APP
 # ─────────────────────────────────────────────────────────────────────────────
@@ -71,14 +80,20 @@ app = FastAPI(title="Fristine Infotech — Expense Agent Server")
 
 # Agent endpoints (ADK)
 
-# Agent 2: Vision — plain REST (bypasses ag_ui_adk multimodal limitation)
+# Agent 2: Vision — plain REST
 app.include_router(vision_router)
+
+# Agent 6: Category Prediction
+app.include_router(category_backend_router)
 
 # Agent 3: Input refiner
 add_adk_fastapi_endpoint(app, adk_refiner_agent, path="/refine/")
 
 # Agent 4: Audit agent
 add_adk_fastapi_endpoint(app, adk_audit_agent, path="/audit/")
+
+# Agent 7: Chatbot agent
+add_adk_fastapi_endpoint(app, adk_chatbot_agent, path="/chatbot_agent/")
 
 # Agent 5: Vision agent (ADK version)
 add_adk_fastapi_endpoint(app, adk_vision_agent, path="/vision-agent/")
@@ -101,6 +116,7 @@ async def health():
             "refiner": "InputRefinerAgent @ POST /refine/",
             "audit":   "AuditAgent        @ POST /audit/",
             "vision_adk": "VisionAgent     @ POST /vision-agent/",
+            "chatbot": "ChatbotAgent      @ POST /chatbot_agent/",
         },
     }
 

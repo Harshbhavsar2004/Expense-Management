@@ -1,8 +1,15 @@
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/utils/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -18,6 +25,7 @@ export async function GET(req: NextRequest) {
          total_receipt_amount, amount_match, date_match,
          audit_explanation, audit_timeline, city, city_tier`
       )
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
     if (from) {

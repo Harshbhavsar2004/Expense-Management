@@ -108,10 +108,10 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
           >
             💼
           </div>
-          <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 700, color: "var(--text-primary)" }}>
-            Welcome to Fristine
+          <h1 className="typo-h3 text-primary! font-bold!" style={{ margin: 0 }}>
+            Welcome to Expify Agent
           </h1>
-          <p style={{ margin: "8px 0 0", color: "var(--text-secondary)", fontSize: "14px" }}>
+          <p className="typo-body-default text-secondary!" style={{ margin: "8px 0 0" }}>
             Tell us about your organization to get started
           </p>
         </div>
@@ -138,20 +138,21 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
               <input
                 id="org-name"
                 type="text"
-                placeholder="e.g. Fristine Infotech"
+                className="typo-body-default"
+                placeholder="e.g. Acme Corp"
                 value={form.name}
                 onChange={set("name")}
                 autoFocus
               />
             </Field>
             <Field label="Industry" id="org-industry">
-              <select id="org-industry" value={form.industry} onChange={set("industry")}>
+              <select id="org-industry" className="typo-body-default" value={form.industry} onChange={set("industry")}>
                 <option value="">Select industry…</option>
                 {INDUSTRIES.map((i) => <option key={i}>{i}</option>)}
               </select>
             </Field>
             <Field label="Team Size" id="org-team-size">
-              <select id="org-team-size" value={form.team_size} onChange={set("team_size")}>
+              <select id="org-team-size" className="typo-body-default" value={form.team_size} onChange={set("team_size")}>
                 <option value="">Select team size…</option>
                 {TEAM_SIZES.map((s) => <option key={s}>{s}</option>)}
               </select>
@@ -159,6 +160,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
             <button
               id="onboarding-next-btn"
+              className="typo-button font-bold!"
               onClick={() => { if (!form.name.trim()) { setError("Please enter your organization name."); return; } setError(""); setStep(2); }}
               style={btnStyle}
             >
@@ -169,13 +171,14 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
         {step === 2 && (
           <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <p style={{ margin: "0 0 8px", color: "var(--text-secondary)", fontSize: "13px" }}>
+            <p className="typo-body-small text-secondary!" style={{ margin: "0 0 8px" }}>
               Almost there! Add a point of contact (optional).
             </p>
             <Field label="Contact Name" id="contact-name">
               <input
                 id="contact-name"
                 type="text"
+                className="typo-body-default"
                 placeholder="Your name"
                 value={form.contact_name}
                 onChange={set("contact_name")}
@@ -186,6 +189,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
               <input
                 id="contact-phone"
                 type="tel"
+                className="typo-body-default"
                 placeholder="+91 9876543210"
                 value={form.contact_phone}
                 onChange={set("contact_phone")}
@@ -195,13 +199,15 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
             <div style={{ display: "flex", gap: "10px" }}>
               <button
                 id="onboarding-back-btn"
+                className="typo-button font-bold!"
                 onClick={() => setStep(1)}
-                style={{ ...btnStyle, background: "var(--bg-hover)", flex: "0 0 auto", width: "80px" }}
+                style={{ ...btnStyle, background: "var(--bg-hover)", flex: "0 0 auto", width: "80px", color: "var(--text-primary)" }}
               >
                 ← Back
               </button>
               <button
                 id="onboarding-submit-btn"
+                className="typo-button font-bold!"
                 onClick={handleSubmit}
                 disabled={loading}
                 style={{ ...btnStyle, flex: 1, opacity: loading ? 0.7 : 1 }}
@@ -213,7 +219,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
         )}
 
         {error && (
-          <p style={{ marginTop: "12px", color: "var(--danger)", fontSize: "13px", textAlign: "center" }}>
+          <p className="typo-body-small text-danger!" style={{ marginTop: "12px", textAlign: "center" }}>
             {error}
           </p>
         )}
@@ -227,7 +233,8 @@ function Field({ label, id, children }: { label: string; id: string; children: R
     <div>
       <label
         htmlFor={id}
-        style={{ display: "block", marginBottom: "6px", fontSize: "12px", fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase" }}
+        className="typo-overline text-secondary!"
+        style={{ display: "block", marginBottom: "6px" }}
       >
         {label}
       </label>
@@ -239,8 +246,6 @@ function Field({ label, id, children }: { label: string; id: string; children: R
           border-radius: 10px;
           padding: 10px 14px;
           color: var(--text-primary);
-          font-size: 14px;
-          font-family: inherit;
           outline: none;
           transition: border-color var(--transition);
         }
@@ -262,10 +267,7 @@ const btnStyle: React.CSSProperties = {
   border: "none",
   borderRadius: "10px",
   padding: "12px 20px",
-  fontSize: "14px",
-  fontWeight: 600,
   cursor: "pointer",
   width: "100%",
-  fontFamily: "inherit",
   transition: "opacity var(--transition), transform var(--transition)",
 };

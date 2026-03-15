@@ -15,7 +15,7 @@ import {
   sendExpenseMenu,
   sendReportDatePrompt,
 } from "./expense-flow";
-import { getRecentExpenses, getExpensesInDateRange } from "./db";
+import { getRecentExpenses, getExpensesInDateRange, getUserByPhone } from "./db";
 import type { ExpenseRow } from "./db";
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -141,6 +141,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const userName: string | undefined = contact?.profile?.name;
     const session = getSession(phone);
 
+    // Link WhatsApp phone to a user profile in public.users if not already in session
+    if (!session.userId) {
+      const user = await getUserByPhone(phone);
+      if (user) {
+        session.userId = user.id;
+      }
+    }
+
     if (userName && !session.userName) {
       session.userName = userName;
       setSession(phone, session);
@@ -186,62 +194,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           ? message.interactive.button_reply.title
           : message.interactive.list_reply?.title;
 
-      console.log(`[WA] Button: ${buttonId}`);
+      console.log(`[WA] Interactive: ${buttonId} (${iType})`);
 
       // ── Main navigation ──
-      if (buttonId === "ADD_EXPENSE") {
+      if (buttonId === "CREATE_EXP_REPORT") {
         clearSession(phone);
         const fresh = getSession(phone);
         fresh.userName = userName;
-        fresh.step = "awaiting_single_or_multiple"; // Start with participants
+        fresh.step = "awaiting_app_client";
         setSession(phone, fresh);
-        await handleExpenseFlow(phone, fresh, "", buttonId);
+        await sendText(phone, "*Step 1: Client Name*\n\nPlease enter the name of the client for this expense report.");
         return new NextResponse("OK", { status: 200 });
       }
 
-      if (buttonId === "VIEW_EXPENSES") {
-        await sendExpenseMenu(phone);
+      if (buttonId === "ADD_EXPENSE") {
+        const { sendAppList } = await import("./expense-flow");
+        await sendAppList(phone, "awaiting_app_selection_add");
         return new NextResponse("OK", { status: 200 });
       }
 
-      if (buttonId === "VIEW_RECENT") {
-        const rows = await getRecentExpenses(phone, 10);
-        if (rows.length === 0) {
-          await sendCard(
-            phone,
-            "Recent Expenses",
-            "No expenses found. Submit your first expense to get started.",
-            "Fristine Infotech · Expense Management",
-            [
-              { id: "ADD_EXPENSE", label: "Submit Expense" },
-              { id: "MAIN_MENU",   label: "Main Menu"      },
-            ]
-          );
-        } else {
-          const summary = formatExpenseRows(rows);
-          await sendCard(
-            phone,
-            `Recent Expenses (Last ${rows.length})`,
-            summary,
-            "Fristine Infotech · Expense Management",
-            [
-              { id: "ADD_EXPENSE",     label: "New Expense"    },
-              { id: "GENERATE_REPORT", label: "Full Report"    },
-            ]
-          );
-        }
-        return new NextResponse("OK", { status: 200 });
-      }
-
-      if (buttonId === "GENERATE_REPORT") {
-        reportPending.add(phone);
-        await sendReportDatePrompt(phone);
+      if (buttonId === "VIEW_HISTORY") {
+        const { sendAppList } = await import("./expense-flow");
+        await sendAppList(phone, "awaiting_app_selection_view");
         return new NextResponse("OK", { status: 200 });
       }
 
       if (buttonId === "MAIN_MENU") {
         clearSession(phone);
         await sendWelcomeCard(phone, userName);
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      // ── Handle Application Selection from List ──
+      if (session.step === "awaiting_app_selection_add" || session.step === "awaiting_app_selection_view") {
+        await handleExpenseFlow(phone, session, buttonText ?? "", buttonId);
         return new NextResponse("OK", { status: 200 });
       }
 
@@ -256,31 +242,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         session.step = "awaiting_manual_category";
         setSession(phone, session);
         await sendText(phone, "Please enter the merchant category manually (e.g., Food, Travel, etc.).");
-        return new NextResponse("OK", { status: 200 });
-      }
-
-      if (buttonId === "VERIFY_NO" && session.step === "awaiting_verification") {
-        session.step = "awaiting_receipt";
-        session.extractedReceipts = [];
-        session.receiptMediaIds = [];
-        session.totalReceiptAmount = 0;
-        setSession(phone, session);
-        await sendText(phone, "Please re-upload your payment receipt and we will re-analyse it.");
-        return new NextResponse("OK", { status: 200 });
-      }
-
-      // ── Additional receipt buttons ──
-      if (buttonId === "ADD_MORE_RECEIPT") {
-        await sendText(phone, "Please upload the next receipt image.");
-        return new NextResponse("OK", { status: 200 });
-      }
-
-      if (buttonId === "PROCEED_ANYWAY" && session.step === "awaiting_additional_receipt") {
-        session.step = "awaiting_verification";
-        setSession(phone, session);
-        const { detectMismatches, sendVerificationCard } = await import("./expense-flow");
-        const mismatch = detectMismatches(session);
-        await sendVerificationCard(phone, session, mismatch);
         return new NextResponse("OK", { status: 200 });
       }
 
@@ -302,16 +263,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // Greetings → welcome
       if (["hi", "hii", "hello", "hey", "start", "menu"].includes(lower)) {
         clearSession(phone);
-        await sendCard(
-          phone,
-          "Welcome",
-          "hello i am fristine infotech agent for the expense management",
-          "Fristine Infotech · Expense Management",
-          [
-            { id: "ADD_EXPENSE",   label: "Add Expense"  },
-            { id: "VIEW_EXPENSES", label: "View Expense" },
-          ]
-        );
+        await sendWelcomeCard(phone, userName);
         return new NextResponse("OK", { status: 200 });
       }
 

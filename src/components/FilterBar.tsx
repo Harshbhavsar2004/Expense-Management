@@ -24,7 +24,6 @@ export function FilterBar({ filters, categories, onChange, onClear, total, loadi
   return (
     <div
       id="filter-bar"
-      className="glass"
       style={{
         display: "flex",
         alignItems: "flex-end",
@@ -32,15 +31,17 @@ export function FilterBar({ filters, categories, onChange, onClear, total, loadi
         padding: "20px 32px",
         flexWrap: "wrap",
         flexShrink: 0,
-        borderBottom: "1px solid var(--border)",
+        background: "white",
+        borderBottom: "1.5px solid var(--border)",
       }}
     >
       {/* Date From */}
       <div style={filterGroupStyle}>
-        <label style={labelStyle} htmlFor="filter-from">Start Date</label>
+        <label className="typo-overline text-muted!" style={labelStyle} htmlFor="filter-from">Start Date</label>
         <input
           id="filter-from"
           type="date"
+          className="typo-body-small"
           value={filters.from}
           onChange={set("from")}
           style={inputStyle}
@@ -49,10 +50,11 @@ export function FilterBar({ filters, categories, onChange, onClear, total, loadi
 
       {/* Date To */}
       <div style={filterGroupStyle}>
-        <label style={labelStyle} htmlFor="filter-to">End Date</label>
+        <label className="typo-overline text-muted!" style={labelStyle} htmlFor="filter-to">End Date</label>
         <input
           id="filter-to"
           type="date"
+          className="typo-body-small"
           value={filters.to}
           onChange={set("to")}
           style={inputStyle}
@@ -61,10 +63,11 @@ export function FilterBar({ filters, categories, onChange, onClear, total, loadi
 
       {/* Category */}
       <div style={filterGroupStyle}>
-        <label style={labelStyle} htmlFor="filter-category">Expense Type</label>
+        <label className="typo-overline text-muted!" style={labelStyle} htmlFor="filter-category">Expense Type</label>
         <select
           id="filter-category"
           value={filters.category}
+          className="typo-body-small"
           onChange={set("category")}
           style={{ ...inputStyle, minWidth: "160px" }}
         >
@@ -80,6 +83,7 @@ export function FilterBar({ filters, categories, onChange, onClear, total, loadi
         {hasFilters && (
           <button
             id="filter-clear-btn"
+            className="typo-button"
             onClick={onClear}
             style={{
               background: "var(--danger-bg)",
@@ -88,8 +92,6 @@ export function FilterBar({ filters, categories, onChange, onClear, total, loadi
               padding: "9px 16px",
               color: "var(--danger)",
               cursor: "pointer",
-              fontSize: "13px",
-              fontWeight: 600,
               transition: "all var(--transition)",
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(239, 68, 68, 0.2)"; }}
@@ -114,8 +116,8 @@ export function FilterBar({ filters, categories, onChange, onClear, total, loadi
             alignItems: "center",
             gap: "8px",
           }}>
-            <span style={{ color: "var(--text-secondary)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Found:</span>
-            <span style={{ color: "var(--accent)", fontSize: "15px", fontWeight: 700 }}>{total}</span>
+            <span className="typo-overline text-secondary!">Total Found:</span>
+            <span className="typo-body-default font-bold! text-accent!">{total}</span>
           </div>
         )}
       </div>
@@ -130,11 +132,7 @@ const filterGroupStyle: React.CSSProperties = {
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: "10px",
-  fontWeight: 600,
-  color: "var(--text-muted)",
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
+  // Typography controlled by utility classes now
 };
 
 const inputStyle: React.CSSProperties = {
@@ -143,8 +141,6 @@ const inputStyle: React.CSSProperties = {
   borderRadius: "8px",
   padding: "6px 10px",
   color: "var(--text-primary)",
-  fontSize: "13px",
-  fontFamily: "inherit",
   outline: "none",
   cursor: "pointer",
   colorScheme: "dark",

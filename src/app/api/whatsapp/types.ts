@@ -4,6 +4,13 @@
 
 export type ExpenseStep =
   | "idle"
+  | "awaiting_app_client"
+  | "awaiting_app_duration"
+  | "awaiting_app_city"
+  | "awaiting_app_participants_count"
+  | "awaiting_app_participants_details"
+  | "awaiting_app_selection_add"
+  | "awaiting_app_selection_view"
   | "awaiting_date_range"
   | "awaiting_expense_type"
   | "awaiting_subcategory"
@@ -28,11 +35,20 @@ export type ExtractedReceiptData = {
   date?: string;
   status?: string;
   rawDescription?: string;
+  transactionTime?: string;
 };
 
 export type ExpenseSession = {
   step: ExpenseStep;
+  userId?: string;
   userName?: string;
+  // Application ID Flow
+  applicationId?: string;
+  clientName?: string;
+  visitDuration?: string;
+  // Participant details
+  appParticipantCount?: number;
+  appParticipantDetails?: { name: string; phone: string }[];
   // Step data
   dateRange?: string;
   expenseType?: string;
@@ -68,6 +84,9 @@ export type ExpenseRecord = {
     sessionId: string;
   };
   expense: {
+    applicationId?: string;
+    clientName?: string;
+    visitDuration?: string;
     dateRange: string;
     normalizedDateRange: string;
     type: string;
@@ -95,6 +114,7 @@ export type ExpenseRecord = {
       paymentMethod: string;
       merchant: string;
       transactionDate: string;
+      transactionTime?: string;
       status: string;
       rawDescription: string;
     }[];
@@ -115,4 +135,15 @@ export type RefinedInput = {
   amountNumeric?: number;
   originalInput: string;
   refinedAt: string;
+};
+
+export type ApplicationRecord = {
+  userPhone: string;
+  applicationId: string;
+  clientName: string;
+  visitDuration: string;
+  city: string;
+  cityTier: string;
+  participantCount: number;
+  participantDetails: { name: string; phone: string }[];
 };

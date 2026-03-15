@@ -20,8 +20,11 @@ export interface ExpenseRow {
   date_match?: boolean;
   audit_explanation?: string;
   audit_timeline?: string[];
+  application_id?: string;
+  client_name?: string;
   city?: string;
   city_tier?: string;
+  receipts?: { transaction_time?: string }[];
 }
 
 interface ExpensesTableProps {
@@ -32,6 +35,7 @@ interface ExpensesTableProps {
 const COLUMNS = [
   { key: "created_at",           label: "Submitted",        width: "120px" },
   { key: "user_name",            label: "Employee",         width: "130px" },
+  { key: "application_id",       label: "App ID / Client",  width: "140px" },
   { key: "expense_type",         label: "Category",         width: "110px" },
   { key: "sub_category",         label: "Sub-category",     width: "120px" },
   { key: "date_range",           label: "Date Range",       width: "130px" },
@@ -72,8 +76,8 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
       >
         <div style={{ fontSize: "64px", filter: "grayscale(1) opacity(0.5)" }}>🧾</div>
         <div>
-          <h3 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "var(--text-primary)" }}>No Records Found</h3>
-          <p style={{ margin: "10px 0 0", fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+          <h3 className="typo-h3" style={{ margin: 0 }}>No Records Found</h3>
+          <p className="typo-body-default text-secondary!" style={{ margin: "10px 0 0", lineHeight: 1.5 }}>
             Adjust your filters or check back later once new claims are submitted via WhatsApp.
           </p>
         </div>
@@ -89,11 +93,11 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
       <div className="premium-card" style={{ overflow: "hidden", border: "1px solid var(--border)" }}>
         <table
           id="expenses-table"
+          className="typo-body-small"
           style={{
             width: "100%",
             borderCollapse: "separate",
             borderSpacing: 0,
-            fontSize: "13px",
             minWidth: "1100px",
           }}
         >
@@ -102,15 +106,11 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
               {COLUMNS.map((col) => (
                 <th
                   key={col.key}
+                  className="typo-overline text-muted!"
                   style={{
                     width: col.width,
                     padding: "16px 20px",
                     textAlign: "left",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    letterSpacing: "0.05em",
-                    textTransform: "uppercase",
-                    color: "var(--text-muted)",
                     background: "var(--bg-tertiary)",
                     borderBottom: "1px solid var(--border)",
                     position: "sticky",
@@ -138,29 +138,42 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
                 {/* Submitted */}
                 <td style={cellStyle}>
                   <div style={{ display: "flex", flexDirection: "column" }}>
-                    <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                    <span className="typo-label text-primary!">
                       {new Date(row.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
                     </span>
-                    <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>
-                      {new Date(row.created_at).getFullYear()}
+                    <span className="typo-caption text-muted!">
+                      {row.receipts?.[0]?.transaction_time || new Date(row.created_at).getFullYear()}
                     </span>
                   </div>
                 </td>
                 {/* Employee */}
                 <td style={cellStyle}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <div style={{
+                    <div className="typo-caption font-bold! text-white!" style={{
                       width: "30px", height: "30px", borderRadius: "var(--radius-sm)",
                       background: stringToGradient(row.user_name || "?"),
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: "12px", fontWeight: 700, color: "#fff", flexShrink: 0,
+                      flexShrink: 0,
                       boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
                     }}>
                       {(row.user_name || "?")[0].toUpperCase()}
                     </div>
-                    <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                    <span className="typo-label text-primary!">
                       {row.user_name || row.user_phone?.slice(-4) || "—"}
                     </span>
+                  </div>
+                </td>
+                {/* App ID / Client */}
+                <td style={cellStyle}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span className="typo-code bg-transparent! p-0! font-bold! text-primary!">
+                      {row.application_id || "—"}
+                    </span>
+                    {row.client_name && (
+                      <span className="typo-caption text-muted!">
+                        {row.client_name}
+                      </span>
+                    )}
                   </div>
                 </td>
                 {/* Category */}
@@ -181,13 +194,13 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
                 <td style={{ ...cellStyle, color: "var(--text-secondary)", fontSize: "12px" }}>{row.date_range || "—"}</td>
                 {/* Claimed */}
                 <td style={cellStyle}>
-                  <span style={{ color: "var(--text-primary)", fontWeight: 700, fontSize: "14px", fontVariantNumeric: "tabular-nums" }}>
+                  <span className="typo-body-default font-bold! tabular-nums text-primary!">
                     {row.claimed_amount || (row.claimed_amount_numeric != null ? `₹${row.claimed_amount_numeric.toLocaleString("en-IN")}` : "—")}
                   </span>
                 </td>
                 {/* Receipt Amt */}
                 <td style={cellStyle}>
-                  <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--success)", fontWeight: 500 }}>
+                  <span className="typo-body-default font-medium! tabular-nums text-success!">
                     {row.total_receipt_amount != null ? `₹${row.total_receipt_amount.toLocaleString("en-IN")}` : "—"}
                   </span>
                 </td>
@@ -211,11 +224,11 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
                 {/* Mismatches */}
                 <td style={cellStyle}>
                   {row.mismatches && row.mismatches.length > 0 ? (
-                    <span style={{ color: "var(--danger)", fontSize: "11px", fontWeight: 500 }}>
+                    <span className="typo-caption font-medium! text-danger!">
                       ⚠️ {row.mismatches[0]}
                     </span>
                   ) : (
-                    <span style={{ color: "var(--success)", fontSize: "11px" }}>—</span>
+                    <span className="typo-caption text-success!">—</span>
                   )}
                 </td>
               </tr>

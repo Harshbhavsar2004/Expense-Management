@@ -15,9 +15,14 @@ const serviceAdapter = new ExperimentalEmptyAdapter();
 const runtime = new CopilotRuntime({
   agents: {
     // Our FastAPI endpoints (Google ADK)
+    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
     "refiner_agent":  new HttpAgent({url: "http://localhost:8000/refine/"}),
+    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
     "audit_agent":    new HttpAgent({url: "http://localhost:8000/audit/"}),
+    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
     "vision_agent":    new HttpAgent({url: "http://localhost:8000/vision-agent/"}),
+    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
+    "chatbot_agent":   new HttpAgent({url: "http://localhost:8000/chatbot_agent/"}),
   }   
 });
  
