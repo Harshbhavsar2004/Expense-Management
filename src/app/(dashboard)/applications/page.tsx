@@ -7,24 +7,37 @@ import { Search, Filter, Plus, LayoutGrid, List } from "lucide-react";
 export default function ApplicationsPage() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fadeOut, setFadeOut] = useState(false);
   const [search, setSearch] = useState("");
   const router = useRouter();
 
   const fetchApps = async () => {
     setLoading(true);
+    setFadeOut(false);
+    // Enforce a minimum skeleton display time so it never flashes
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 800));
     try {
-      const res = await fetch("/api/applications/all");
+      const [res] = await Promise.all([fetch("/api/applications/all"), minDelay]);
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setApplications(data);
-      } else {
-        console.error("Data is not an array:", data);
-        setApplications([]);
-      }
+      // Trigger fade-out first, then swap content
+      setFadeOut(true);
+      setTimeout(() => {
+        if (Array.isArray(data)) {
+          setApplications(data);
+        } else {
+          console.error("Data is not an array:", data);
+          setApplications([]);
+        }
+        setLoading(false);
+        setFadeOut(false);
+      }, 350);
     } catch (err) {
       console.error("Fetch error:", err);
-    } finally {
-      setLoading(false);
+      setFadeOut(true);
+      setTimeout(() => {
+        setLoading(false);
+        setFadeOut(false);
+      }, 350);
     }
   };
 
@@ -32,7 +45,7 @@ export default function ApplicationsPage() {
     fetchApps();
   }, []);
 
-  const filteredApps = Array.isArray(applications) ? applications.filter((app: any) => 
+  const filteredApps = Array.isArray(applications) ? applications.filter((app: any) =>
     app.application_id?.toLowerCase().includes(search.toLowerCase()) ||
     app.client_name?.toLowerCase().includes(search.toLowerCase()) ||
     app.city?.toLowerCase().includes(search.toLowerCase())
@@ -51,48 +64,90 @@ export default function ApplicationsPage() {
             <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Expense Applications</h1>
             <p className="text-slate-500 mt-2 font-medium">Review and audit client visit reports from WhatsApp.</p>
           </div>
-          
+
           <div className="flex gap-3">
-             <div className="bg-white/5 p-1 rounded-xl flex">
-                <button className="p-2 text-white bg-blue-500 rounded-lg shadow-lg"><LayoutGrid size={18} /></button>
-                <button className="p-2 text-gray-500 hover:text-white"><List size={18} /></button>
-             </div>
-             <button className="btn-accent px-6 py-2 rounded-xl flex items-center gap-2 font-bold transition-all hover:scale-105">
-                <Plus size={18} /> New Report
-             </button>
+            <div className="bg-white/5 p-1 rounded-xl flex">
+              <button className="p-2 text-white bg-blue-500 rounded-lg shadow-lg"><LayoutGrid size={18} /></button>
+              <button className="p-2 text-gray-500 hover:text-white"><List size={18} /></button>
+            </div>
+            <button className="btn-accent px-6 py-2 rounded-xl flex items-center gap-2 font-bold transition-all hover:scale-105">
+              <Plus size={18} /> New Report
+            </button>
           </div>
         </div>
 
         {/* Search & Filters */}
         <div className="flex flex-col md:flex-row gap-4 items-center">
-           <div className="flex-1 relative w-full group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search by Application ID, Client or City..."
-                className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all font-medium"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-           </div>
-           <button className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-2xl text-slate-600 font-bold hover:bg-slate-50 transition-all shadow-sm">
-              <Filter size={18} /> Filters
-           </button>
+          <div className="flex-1 relative w-full group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+            <input
+              type="text"
+              placeholder="Search by Application ID, Client or City..."
+              className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all font-medium"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <button className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-2xl text-slate-600 font-bold hover:bg-slate-50 transition-all shadow-sm">
+            <Filter size={18} /> Filters
+          </button>
         </div>
 
         {/* Content Area */}
         <div className="flex-1 overflow-x-auto overflow-y-auto pb-12 custom-scrollbar">
           {loading ? (
-            <div className="flex flex-col gap-4">
-              {[1,2,3,4,5].map(i => <div key={i} className="shimmer h-16 w-full rounded-xl" />)}
+            <div
+              className="flex flex-col gap-3 transition-opacity duration-300 ease-in-out"
+              style={{ opacity: fadeOut ? 0 : 1 }}
+            >
+              {/* Table header skeleton */}
+              <div className="min-w-[800px] border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-6 py-4 flex gap-6">
+                  {[120, 160, 100, 130, 90, 80].map((w, i) => (
+                    <div
+                      key={i}
+                      className="h-3 rounded-full bg-slate-200 animate-pulse"
+                      style={{
+                        width: w,
+                        animationDelay: `${i * 60}ms`,
+                        animationDuration: "1.6s",
+                      }}
+                    />
+                  ))}
+                </div>
+                {/* Row skeletons */}
+                {[...Array(6)].map((_, rowIdx) => (
+                  <div
+                    key={rowIdx}
+                    className="border-b border-slate-100 px-6 py-4 flex gap-6 items-center"
+                    style={{
+                      opacity: 1 - rowIdx * 0.12,
+                    }}
+                  >
+                    {[120, 160, 100, 130, 90, 80].map((w, colIdx) => (
+                      <div
+                        key={colIdx}
+                        className="h-3.5 rounded-full bg-slate-100 animate-pulse"
+                        style={{
+                          width: w * (0.7 + Math.random() * 0.5),
+                          animationDelay: `${rowIdx * 80 + colIdx * 40}ms`,
+                          animationDuration: "1.6s",
+                        }}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           ) : filteredApps.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-50 mt-12">
-               <Search size={64} className="text-slate-300 mb-4" />
-               <p className="typo-h3 text-slate-500">No applications found.</p>
+            <div className="h-full flex flex-col items-center justify-center opacity-50 mt-12 animate-fade-in">
+              <Search size={64} className="text-slate-300 mb-4" />
+              <p className="typo-h3 text-slate-500">No applications found.</p>
             </div>
           ) : (
-            <div className="min-w-[800px] border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+            <div
+              className="min-w-[800px] border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm animate-fade-in"
+            >
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
@@ -106,7 +161,7 @@ export default function ApplicationsPage() {
                 </thead>
                 <tbody>
                   {filteredApps.map((app: any) => (
-                    <tr 
+                    <tr
                       key={app.id}
                       onClick={() => router.push(`/applications/${app.application_id}`)}
                       className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group"
@@ -150,4 +205,4 @@ export default function ApplicationsPage() {
       </div>
     </div>
   );
-}
+}w

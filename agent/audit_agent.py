@@ -138,12 +138,17 @@ REIMBURSEMENT POLICY:
 
 VERIFICATION RULES:
 1. AMOUNT MATCH: If Claimed Amount != Receipt Total, it's a "mismatch". Tag: "amount_mismatch".
-2. DATE MATCH: If the transaction date on the receipt differs from the claim date, it's a "mismatch". Tag: "date_mismatch".
+2. DATE MATCH: 
+   - If the transaction date on the receipt differs from the claim date, it's a "mismatch". Tag: "date_mismatch".
+   - If the receipt date falls OUTSIDE the application's visit duration (start/end dates), it's a critical "mismatch". Tag: "date_mismatch".
 3. POLICY COMPLIANCE: 
     - MEALS: Check city category (Tier I, II, III). 
-    - If Claimed Amount > Maximum Capping for that city tier, it's a "policy_mismatch".
+    - **CRITICAL**: The maximum capping (900/700/450) applies **ONLY to Meals**. Do NOT apply these caps to Travel or Hotel.
+    - If Claimed Amount > Maximum Capping for that city tier (for Meals ONLY), it's a "policy_mismatch".
     - Rule: Reimbursed least of Actual vs Limit.
-4. VERDICT: 
+4. RECEIPT QUALITY: 
+    - If the provided image/document is a "FAILED" screenshot (error screen, blank, corrupt, or unreadable), it is a "mismatch". Tag: "amount_mismatch".
+5. VERDICT: 
     - If all matches and compliant, set verified=True, mismatch=False.
     - If any discrepancy or policy violation, set verified=False, mismatch=True.
 

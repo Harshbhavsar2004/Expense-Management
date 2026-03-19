@@ -14,11 +14,11 @@ CATEGORY_PROMPT = """You are an expert expense categorization agent for Fristine
 Your job is to determine the most accurate category for an expense based on the merchant name, date, and time.
 
 PRIMARY CATEGORIES:
-- Meals (Food, Drinks, Restaurants, Cafes)
-- Travel Expenses (Taxis, Flights, Trains, Cabs, Tolls, Tours, Travels)
-- Hotel Accommodation (Hotels, Lodges, Stay, OYO, Airbnb)
+- Meals (Food, Drinks, Restaurants, Cafes, Zomato, Swiggy, Instamart)
+- Travel Expenses (Taxis, Flights, Trains, Cabs, Tolls, Tours, Travels, Uber, Ola, Rapido, Redbus)
+- Hotel Accommodation (Hotels, Lodges, Stay, OYO, Airbnb, Makemytrip)
 - Communication (Jio, Airtel, Vodafone, Internet)
-- Office Supplies (Amazon, Flipkart stationary, etc)
+- Office Supplies (Amazon, Flipkart stationary, Zepto, Blinkit)
 - Miscellaneous (Anything else)
 
 SPECIAL MEAL LOGIC:
@@ -62,14 +62,20 @@ async def predict_category(request: Request) -> JSONResponse:
         category = "Miscellaneous"
         
         # Travel
-        if any(kw in merchant_lower for kw in ["tours", "travels", "transport", "taxi", "uber", "ola", "indigo", "air india"]):
+        if any(kw in merchant_lower for kw in ["tours", "travels", "transport", "taxi", "uber", "ola", "indigo", "air india", "rapido", "redbus", "irctc"]):
             category = "Travel Expenses"
         # Hotel
-        elif any(kw in merchant_lower for kw in ["hotel", "lodge", "inn", "suites", "oyo", "makemytrip"]):
+        elif any(kw in merchant_lower for kw in ["hotel", "lodge", "inn", "suites", "oyo", "makemytrip", "airbnb", "stay"]):
             category = "Hotel Accommodation"
         # Food
-        elif any(kw in merchant_lower for kw in ["restraurant", "restaurant", "cafe", "food", "dining", "swiggy", "zomato", "kfc", "mcdonald"]):
+        elif any(kw in merchant_lower for kw in ["restraurant", "restaurant", "cafe", "food", "dining", "swiggy", "zomato", "kfc", "mcdonald", "instamart", "starbucks", "eats"]):
             category = "Meals"
+        # Communication
+        elif any(kw in merchant_lower for kw in ["jio", "airtel", "vodafone", "vi ", "recharge", "internet", "broadband"]):
+            category = "Communication"
+        # Supplies
+        elif any(kw in merchant_lower for kw in ["amazon", "flipkart", "zepto", "blinkit", "stationary", "supplies"]):
+            category = "Office Supplies"
             
         # Refine Meals if time is present
         if category == "Meals" and time != "Unknown" and time:

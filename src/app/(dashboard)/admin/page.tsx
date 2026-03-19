@@ -1,352 +1,861 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { ExpenseRow } from "@/components/ExpensesTable";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  ArrowUpRight,
-  Users,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  CircleDollarSign,
-  FileCheck,
-  TrendingUp,
-  ArrowRight,
+  Paperclip, Mic, MicOff, Send, X, FileText, Sparkles,
+  BarChart3, FileCheck, Users, TrendingUp, ArrowUpRight,
   ChevronRight,
-  ReceiptText,
-  ShieldCheck,
-  Ban,
-  Hourglass,
 } from "lucide-react";
 import Link from "next/link";
 
+/* ─────────────────────────── Types ─────────────────────────── */
+
+interface AttachedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "pdf" | "other";
+}
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  files?: { name: string; type: string; url?: string }[];
+  timestamp: Date;
+}
+
+/* ──────────────────────── Suggestions ──────────────────────── */
+
+const SUGGESTIONS = [
+  {
+    icon: <BarChart3 size={17} />,
+    title: "Expense Summary",
+    desc: "Show me this month's expense breakdown by category",
+    color: "#6366F1",
+    gradient: "rgba(99,102,241,0.12)",
+  },
+  {
+    icon: <FileCheck size={17} />,
+    title: "Pending Approvals",
+    desc: "Which applications are waiting for my review?",
+    color: "#F97316",
+    gradient: "rgba(249,115,22,0.12)",
+  },
+  {
+    icon: <TrendingUp size={17} />,
+    title: "Spending Trends",
+    desc: "Analyze spending patterns and flag anomalies",
+    color: "#10B981",
+    gradient: "rgba(16,185,129,0.12)",
+  },
+  {
+    icon: <Users size={17} />,
+    title: "Employee Report",
+    desc: "Who are the top spenders this quarter?",
+    color: "#3B82F6",
+    gradient: "rgba(59,130,246,0.12)",
+  },
+];
+
+/* ─────────────────────────── Page ──────────────────────────── */
+
 export default function AdminDashboard() {
-  const [data, setData] = useState<{ applications: any[], expenses: any[] }>({ applications: [], expenses: [] });
-  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const hasMessages = messages.length > 0;
+
+  /* Auto-scroll */
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const appsRes = await fetch("/api/admin/applications/submitted");
-        const apps = await appsRes.json();
-        
-        // Fetch expenses but we should ideally filter them by application_id in the API
-        // For now, let's assume /api/expenses/all returns all but we SHOULD filter them here
-        // or update the API. Let's update the API later.
-        const expsRes = await fetch("/api/expenses/all");
-        const exps = await expsRes.json();
-        
-        // Filter expenses to only those belonging to submitted applications
-        const submittedAppIds = new Set(apps.map((a: any) => a.application_id));
-        const filteredExps = Array.isArray(exps) ? exps.filter((e: any) => submittedAppIds.has(e.application_id)) : [];
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
-        setData({ applications: Array.isArray(apps) ? apps : [], expenses: filteredExps });
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
-
-  const stats = useMemo(() => {
-    const expenses = data.expenses;
-    const applications = data.applications;
-    
-    if (!expenses.length) return { total: 0, count: 0, verified: 0, pending: applications.length, mismatches: 0, employees: 0, avgAmount: 0 };
-    const total = expenses.reduce((s, e) => s + (e.claimed_amount_numeric || 0), 0);
-    const verified = expenses.filter((e) => e.verified).length;
-    const mismatches = expenses.filter((e) => e.amount_match === false).length;
-    const uniqueUsers = new Set(expenses.map((e) => e.user_phone)).size;
-    const avgAmount = total / expenses.length;
-    return { total, count: expenses.length, verified, pending: applications.length, mismatches, employees: uniqueUsers, avgAmount };
-  }, [data]);
-
-  // Group by category
-  const byCategory = useMemo(() => {
-    const map: Record<string, number> = {};
-    data.expenses.forEach((e) => {
-      const cat = e.expense_type || "Other";
-      map[cat] = (map[cat] || 0) + (e.claimed_amount_numeric || 0);
+  /* File attach */
+  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const newFiles: AttachedFile[] = files.map((file) => {
+      const type = file.type.startsWith("image/")
+        ? "image"
+        : file.type === "application/pdf"
+        ? "pdf"
+        : "other";
+      return {
+        id: Math.random().toString(36).slice(2),
+        file,
+        preview: type === "image" ? URL.createObjectURL(file) : undefined,
+        type,
+      };
     });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [data.expenses]);
+    setAttachedFiles((prev) => [...prev, ...newFiles]);
+    e.target.value = "";
+  };
 
-  // Recent pending applications (not expenses)
-  const pendingApps = data.applications.slice(0, 5);
+  const removeFile = (id: string) => {
+    setAttachedFiles((prev) => {
+      const removed = prev.find((f) => f.id === id);
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((f) => f.id !== id);
+    });
+  };
+
+  /* Send message */
+  const handleSend = useCallback(
+    async (content: string = input) => {
+      const trimmed = content.trim();
+      if (!trimmed && attachedFiles.length === 0) return;
+
+      const userMsg: ChatMessage = {
+        id: Date.now().toString(),
+        role: "user",
+        content: trimmed,
+        files: attachedFiles.map((f) => ({
+          name: f.file.name,
+          type: f.type,
+          url: f.preview,
+        })),
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, userMsg]);
+      setInput("");
+      setAttachedFiles([]);
+      setIsLoading(true);
+
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+
+      /* Simulated response — wire to real backend */
+      setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content:
+              "I'm analyzing your request. Connect this to the Expify AI backend to get live expense insights, audit summaries, and approval recommendations.",
+            timestamp: new Date(),
+          },
+        ]);
+        setIsLoading(false);
+      }, 1600);
+    },
+    [input, attachedFiles]
+  );
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const autoResize = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 180) + "px";
+  };
+
+  const canSend = input.trim().length > 0 || attachedFiles.length > 0;
+
+  /* ──────────────────── Render ──────────────────── */
 
   return (
-    <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: "28px", maxWidth: "1400px" }}>
-
-      {/* ── Header Banner ── */}
-      <div
-        className="animate-fade-in"
-        style={{
-          background: "linear-gradient(135deg, #1a1f36 0%, #2d1f5e 50%, #1a3a6b 100%)",
-          borderRadius: "16px",
-          padding: "28px 32px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          position: "relative",
-          overflow: "hidden",
-          boxShadow: "0 4px 24px rgba(99,102,241,0.15)",
-        }}
-      >
-        <div style={{ position: "absolute", right: "20px", top: "-30px", width: "180px", height: "180px", borderRadius: "50%", background: "rgba(99,102,241,0.08)" }} />
-        <div style={{ position: "absolute", right: "120px", bottom: "-50px", width: "130px", height: "130px", borderRadius: "50%", background: "rgba(249,115,22,0.07)" }} />
-
-        <div style={{ zIndex: 1 }}>
-          <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", fontFamily: "'Inter', sans-serif", marginBottom: "8px" }}>
-            Admin Control Center
-          </div>
-          <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 700, color: "white", fontFamily: "'DM Sans', sans-serif" }}>
-            Expense Administration
-          </h2>
-          <p style={{ margin: 0, fontSize: "13px", color: "rgba(255,255,255,0.5)", fontFamily: "'Inter', sans-serif" }}>
-            Monitor, audit and approve all organizational expenses
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: "10px", zIndex: 1 }}>
-          <Link href="/admin/approvals" style={{ textDecoration: "none" }}>
-            <button className="btn-primary typo-button" style={{ background: "#F97316", gap: "6px", padding: "10px 18px" }}>
-              <CheckCircle size={15} />
-              Approvals ({stats.pending})
-            </button>
-          </Link>
-          <Link href="/admin/expenses" style={{ textDecoration: "none" }}>
-            <button className="btn-secondary typo-button" style={{ background: "rgba(255,255,255,0.08)", color: "white", borderColor: "rgba(255,255,255,0.15)", gap: "6px", padding: "10px 18px" }}>
-              <ReceiptText size={15} />
-              All Expenses
-            </button>
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Stats Grid ── */}
-      <div
-        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "16px" }}
-        className="stagger-children"
-      >
-        <AdminStatCard label="Total Volume" value={`₹${(stats.total / 100000).toFixed(1)}L`} icon={<CircleDollarSign size={19} />} color="var(--accent)" bg="var(--accent-light)" trend="+12.3%" loading={loading} />
-        <AdminStatCard label="Total Claims" value={stats.count.toString()} icon={<ReceiptText size={19} />} color="#6366F1" bg="rgba(99,102,241,0.09)" loading={loading} />
-        <AdminStatCard label="Verified" value={stats.verified.toString()} icon={<ShieldCheck size={19} />} color="var(--success)" bg="var(--success-bg)" loading={loading} />
-        <AdminStatCard label="Pending Review" value={stats.pending.toString()} icon={<Hourglass size={19} />} color="var(--warning)" bg="var(--warning-bg)" loading={loading} />
-        <AdminStatCard label="Mismatches" value={stats.mismatches.toString()} icon={<AlertTriangle size={19} />} color="var(--danger)" bg="var(--danger-bg)" loading={loading} />
-        <AdminStatCard label="Active Employees" value={stats.employees.toString()} icon={<Users size={19} />} color="var(--teal)" bg="var(--teal-light)" loading={loading} />
-      </div>
-
-      {/* ── Main Grid ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "20px" }}>
-
-        {/* Pending Approvals Table */}
-        <div className="premium-card animate-fade-in" style={{ padding: "22px 24px" }}>
-          <div className="section-header">
-            <div>
-              <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'DM Sans', sans-serif" }}>
-                Pending Application Approvals
-              </h3>
-              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>
-                Submitted reports awaiting your review
-              </p>
-            </div>
-            <Link href="/admin/approvals" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", fontWeight: 500, color: "var(--accent)", textDecoration: "none", fontFamily: "'Inter', sans-serif" }}>
-              View all <ArrowRight size={14} />
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        background: "#0D0D0F",
+        position: "relative",
+      }}
+    >
+      {/* Quick-nav pills (top-right) */}
+      {!hasMessages && (
+        <div
+          style={{
+            position: "absolute",
+            top: "20px",
+            right: "24px",
+            display: "flex",
+            gap: "8px",
+            zIndex: 10,
+          }}
+        >
+          {[
+            { label: "Approvals", href: "/admin/approvals", color: "#F97316" },
+            { label: "All Expenses", href: "/admin/expenses", color: "#6366F1" },
+            { label: "Reports", href: "/admin/reports", color: "#10B981" },
+          ].map((pill) => (
+            <Link key={pill.label} href={pill.href} style={{ textDecoration: "none" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "6px 13px",
+                  borderRadius: "9999px",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "rgba(255,255,255,0.55)",
+                  fontFamily: "'Inter', sans-serif",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = `${pill.color}18`;
+                  e.currentTarget.style.borderColor = `${pill.color}40`;
+                  e.currentTarget.style.color = pill.color;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                  e.currentTarget.style.color = "rgba(255,255,255,0.55)";
+                }}
+              >
+                {pill.label} <ChevronRight size={12} />
+              </div>
             </Link>
-          </div>
-
-          {loading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {[1, 2, 3, 4].map((i) => <div key={i} className="shimmer" style={{ height: "58px", borderRadius: "10px" }} />)}
-            </div>
-          ) : pendingApps.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
-              <CheckCircle size={32} style={{ opacity: 0.3, marginBottom: "10px" }} />
-              <p style={{ margin: 0, fontSize: "14px" }}>All caught up! No pending applications.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              {/* Header row */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 100px 90px", gap: "12px", padding: "8px 12px", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Inter', sans-serif", borderBottom: "1px solid var(--border)" }}>
-                <span>Application / Employee</span>
-                <span>Location</span>
-                <span>Submitted At</span>
-                <span>Action</span>
-              </div>
-
-              {pendingApps.map((app) => (
-                <div
-                  key={app.id}
-                  onClick={() => window.location.href = `/applications/${app.application_id}`}
-                  style={{ display: "grid", gridTemplateColumns: "1fr 140px 100px 90px", gap: "12px", padding: "10px 12px", borderRadius: "8px", alignItems: "center", transition: "background 0.15s", cursor: "pointer" }}
-                  onMouseEnter={(ev) => (ev.currentTarget.style.background = "var(--bg-tertiary)")}
-                  onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
-                    <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 700, color: "white", flexShrink: 0 }}>
-                      {app.application_id.slice(-2)}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-primary)", fontFamily: "'Inter', sans-serif" }}>{app.application_id}</div>
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>{app.users?.full_name || "Employee"}</div>
-                    </div>
-                  </div>
-
-                  <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontFamily: "'Inter', sans-serif" }}>
-                    {app.city || "—"}
-                  </span>
-
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>
-                    {app.submitted_at ? new Date(app.submitted_at).toLocaleDateString("en-IN") : "—"}
-                  </span>
-
-                  <div style={{ display: "flex", gap: "5px" }}>
-                    <button style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--accent)", background: "var(--accent-light)", color: "var(--accent)", fontSize: "11px", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
-                      Review
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
+      )}
 
-        {/* Right panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* ── Chat / Welcome area ── */}
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+        {!hasMessages ? (
+          /* ── Welcome Screen ── */
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "60px 24px 24px",
+            }}
+          >
+            {/* Glow */}
+            <div
+              style={{
+                position: "absolute",
+                top: "20%",
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: "360px",
+                height: "360px",
+                borderRadius: "50%",
+                background: "radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)",
+                pointerEvents: "none",
+              }}
+            />
 
-          {/* Spend by category */}
-          <div className="premium-card animate-fade-in" style={{ padding: "20px" }}>
-            <h4 style={{ margin: "0 0 16px", fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'DM Sans', sans-serif" }}>
-              Spend by Category
-            </h4>
-            {loading ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {[1, 2, 3].map((i) => <div key={i} className="shimmer" style={{ height: "36px" }} />)}
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {byCategory.map(([cat, amt]) => {
-                  const max = byCategory[0]?.[1] || 1;
-                  const pct = Math.round((amt / max) * 100);
-                  return (
-                    <div key={cat}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
-                        <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontFamily: "'Inter', sans-serif", textTransform: "capitalize" }}>{cat}</span>
-                        <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>
-                          ₹{amt.toLocaleString("en-IN")}
-                        </span>
-                      </div>
-                      <div style={{ height: "5px", background: "var(--bg-tertiary)", borderRadius: "9999px" }}>
-                        <div style={{ height: "100%", width: `${pct}%`, background: CATEGORY_COLORS[cat.toLowerCase()] || "var(--accent)", borderRadius: "9999px", transition: "width 0.7s cubic-bezier(0.4,0,0.2,1)" }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            {/* Logo mark */}
+            <div
+              style={{
+                width: "60px",
+                height: "60px",
+                borderRadius: "18px",
+                background: "linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "22px",
+                boxShadow: "0 0 48px rgba(99,102,241,0.35), 0 0 0 1px rgba(99,102,241,0.2)",
+              }}
+            >
+              <Sparkles size={27} color="white" />
+            </div>
 
-          {/* Admin actions */}
-          <div className="premium-card animate-fade-in" style={{ padding: "20px" }}>
-            <h4 style={{ margin: "0 0 14px", fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'DM Sans', sans-serif" }}>
-              Admin Actions
-            </h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {[
-                { label: "Review Mismatches",   desc: `${stats.mismatches} flagged items`, href: "/admin/expenses", icon: "⚠️", urgent: stats.mismatches > 0 },
-                { label: "Generate Report",      desc: "Monthly expense summary",          href: "/admin/reports",  icon: "📊", urgent: false },
-                { label: "Manage Employees",     desc: `${stats.employees} active users`,  href: "/admin/employees", icon: "👥", urgent: false },
-              ].map((action) => (
-                <Link key={action.label} href={action.href} style={{ textDecoration: "none" }}>
+            <h1
+              style={{
+                margin: "0 0 10px",
+                fontSize: "26px",
+                fontWeight: 700,
+                color: "rgba(255,255,255,0.92)",
+                fontFamily: "'DM Sans', sans-serif",
+                textAlign: "center",
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Expify Admin AI
+            </h1>
+            <p
+              style={{
+                margin: "0 0 44px",
+                fontSize: "14px",
+                color: "rgba(255,255,255,0.38)",
+                fontFamily: "'Inter', sans-serif",
+                textAlign: "center",
+                maxWidth: "400px",
+                lineHeight: 1.65,
+              }}
+            >
+              Ask anything about expenses, approvals, or employees.
+              Upload receipts or PDFs for instant AI analysis.
+            </p>
+
+            {/* Suggestion cards */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, 1fr)",
+                gap: "10px",
+                width: "100%",
+                maxWidth: "620px",
+              }}
+            >
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s.title}
+                  onClick={() => handleSend(s.desc)}
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                    borderRadius: "14px",
+                    padding: "18px 18px 16px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    transition: "all 0.18s",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = s.gradient;
+                    e.currentTarget.style.borderColor = `${s.color}30`;
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)";
+                    e.currentTarget.style.transform = "translateY(0)";
+                  }}
+                >
                   <div
                     style={{
+                      width: "34px",
+                      height: "34px",
+                      borderRadius: "10px",
+                      background: `${s.color}18`,
                       display: "flex",
                       alignItems: "center",
-                      gap: "10px",
-                      padding: "10px 12px",
-                      background: action.urgent ? "rgba(239,68,68,0.04)" : "var(--bg-tertiary)",
-                      border: `1px solid ${action.urgent ? "rgba(239,68,68,0.2)" : "var(--border)"}`,
-                      borderRadius: "10px",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
+                      justifyContent: "center",
+                      color: s.color,
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "var(--border-hover)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = action.urgent ? "rgba(239,68,68,0.04)" : "var(--bg-tertiary)"; e.currentTarget.style.borderColor = action.urgent ? "rgba(239,68,68,0.2)" : "var(--border)"; }}
                   >
-                    <span style={{ fontSize: "18px" }}>{action.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: "13px", fontWeight: 500, color: action.urgent ? "var(--danger)" : "var(--text-primary)", fontFamily: "'Inter', sans-serif" }}>{action.label}</div>
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>{action.desc}</div>
-                    </div>
-                    <ChevronRight size={14} color="var(--text-muted)" />
+                    {s.icon}
                   </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "rgba(255,255,255,0.82)",
+                        fontFamily: "'Inter', sans-serif",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {s.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "rgba(255,255,255,0.35)",
+                        fontFamily: "'Inter', sans-serif",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {s.desc}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Shortcut row */}
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                marginTop: "32px",
+                alignItems: "center",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: "rgba(255,255,255,0.22)",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                Or go to
+              </span>
+              {[
+                { label: "Pending Approvals", href: "/admin/approvals" },
+                { label: "Employees", href: "/admin/employees" },
+              ].map((lnk) => (
+                <Link key={lnk.label} href={lnk.href} style={{ textDecoration: "none" }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "rgba(255,255,255,0.35)",
+                      fontFamily: "'Inter', sans-serif",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "3px",
+                      padding: "4px 10px",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: "9999px",
+                      transition: "all 0.15s",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.color = "rgba(255,255,255,0.7)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.color = "rgba(255,255,255,0.35)")
+                    }
+                  >
+                    {lnk.label} <ArrowUpRight size={10} />
+                  </span>
                 </Link>
               ))}
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        ) : (
+          /* ── Messages ── */
+          <div
+            style={{
+              maxWidth: "780px",
+              width: "100%",
+              margin: "0 auto",
+              padding: "40px 24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "28px",
+            }}
+          >
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                style={{
+                  display: "flex",
+                  gap: "14px",
+                  flexDirection: msg.role === "user" ? "row-reverse" : "row",
+                  alignItems: "flex-start",
+                }}
+              >
+                {/* Avatar */}
+                <div
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background:
+                      msg.role === "user"
+                        ? "linear-gradient(135deg,#6366F1,#8B5CF6)"
+                        : "rgba(255,255,255,0.07)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "white",
+                  }}
+                >
+                  {msg.role === "user" ? "A" : <Sparkles size={15} />}
+                </div>
 
-/* ── Sub-components ── */
+                <div
+                  style={{
+                    maxWidth: "78%",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    alignItems: msg.role === "user" ? "flex-end" : "flex-start",
+                  }}
+                >
+                  {/* Attached files preview */}
+                  {msg.files && msg.files.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {msg.files.map((f, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "7px",
+                            padding: "7px 11px",
+                            background: "rgba(255,255,255,0.05)",
+                            borderRadius: "10px",
+                            border: "1px solid rgba(255,255,255,0.09)",
+                          }}
+                        >
+                          {f.type === "image" && f.url ? (
+                            <img
+                              src={f.url}
+                              alt={f.name}
+                              style={{ width: "52px", height: "52px", objectFit: "cover", borderRadius: "6px" }}
+                            />
+                          ) : (
+                            <FileText size={15} color="#F97316" />
+                          )}
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "rgba(255,255,255,0.45)",
+                              fontFamily: "'Inter', sans-serif",
+                              maxWidth: "100px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {f.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-const CATEGORY_COLORS: Record<string, string> = {
-  food: "#10B981",
-  travel: "#3B82F6",
-  hotel: "#6366F1",
-  accommodation: "#8B5CF6",
-  entertainment: "#F59E0B",
-  medical: "#EF4444",
-  other: "#94A3B8",
-};
+                  {/* Bubble */}
+                  {msg.content && (
+                    <div
+                      style={{
+                        padding: "13px 17px",
+                        borderRadius:
+                          msg.role === "user"
+                            ? "18px 18px 4px 18px"
+                            : "4px 18px 18px 18px",
+                        background:
+                          msg.role === "user"
+                            ? "linear-gradient(135deg,#6366F1,#7C3AED)"
+                            : "rgba(255,255,255,0.055)",
+                        border:
+                          msg.role === "assistant"
+                            ? "1px solid rgba(255,255,255,0.08)"
+                            : "none",
+                        fontSize: "14px",
+                        lineHeight: 1.65,
+                        color: "rgba(255,255,255,0.88)",
+                        fontFamily: "'Inter', sans-serif",
+                      }}
+                    >
+                      {msg.content}
+                    </div>
+                  )}
 
-function CategoryBadge({ cat }: { cat?: string }) {
-  const key = (cat || "other").toLowerCase();
-  const color = CATEGORY_COLORS[key] || "#94A3B8";
-  return (
-    <span style={{
-      display: "inline-flex",
-      alignItems: "center",
-      padding: "2px 8px",
-      borderRadius: "9999px",
-      fontSize: "11px",
-      fontWeight: 600,
-      background: `${color}18`,
-      color,
-      fontFamily: "'Inter', sans-serif",
-      textTransform: "capitalize",
-    }}>
-      {cat || "Other"}
-    </span>
-  );
-}
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      color: "rgba(255,255,255,0.2)",
+                      fontFamily: "'Inter', sans-serif",
+                    }}
+                  >
+                    {msg.timestamp.toLocaleTimeString("en-IN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              </div>
+            ))}
 
-function AdminStatCard({
-  label, value, icon, color, bg, trend, loading,
-}: {
-  label: string; value: string; icon: React.ReactNode;
-  color: string; bg: string; trend?: string; loading?: boolean;
-}) {
-  return (
-    <div className="stat-card animate-fade-in">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
-        <div style={{ padding: "8px", background: bg, color, borderRadius: "9px" }}>{icon}</div>
-        {trend && (
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--success)", display: "flex", alignItems: "center", gap: "2px", background: "var(--success-bg)", padding: "2px 7px", borderRadius: "9999px" }}>
-            <ArrowUpRight size={11} /> {trend}
-          </span>
+            {/* Loading dots */}
+            {isLoading && (
+              <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                <div
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "50%",
+                    background: "rgba(255,255,255,0.07)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Sparkles size={15} color="rgba(255,255,255,0.6)" />
+                </div>
+                <div
+                  style={{
+                    padding: "16px 20px",
+                    background: "rgba(255,255,255,0.055)",
+                    borderRadius: "4px 18px 18px 18px",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    display: "flex",
+                    gap: "5px",
+                    alignItems: "center",
+                  }}
+                >
+                  {[0, 150, 300].map((delay) => (
+                    <span
+                      key={delay}
+                      className="dot-bounce"
+                      style={{
+                        width: "6px",
+                        height: "6px",
+                        borderRadius: "50%",
+                        background: "rgba(255,255,255,0.4)",
+                        display: "inline-block",
+                        animationDelay: `${delay}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
         )}
       </div>
-      <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", fontFamily: "'Inter', sans-serif" }}>{label}</div>
-      {loading ? (
-        <div className="shimmer" style={{ height: "26px", width: "70px", marginTop: "5px" }} />
-      ) : (
-        <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", marginTop: "3px", fontFamily: "'DM Sans', sans-serif", letterSpacing: "-0.02em" }}>{value}</div>
-      )}
+
+      {/* ── Input Area ── */}
+      <div
+        style={{
+          padding: hasMessages ? "16px 24px 20px" : "20px 24px 28px",
+          background: "#0D0D0F",
+          borderTop: hasMessages ? "1px solid rgba(255,255,255,0.05)" : "none",
+        }}
+      >
+        <div style={{ maxWidth: "780px", margin: "0 auto" }}>
+          {/* File preview chips */}
+          {attachedFiles.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginBottom: "10px",
+                padding: "10px 12px",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: "12px",
+                border: "1px solid rgba(255,255,255,0.06)",
+              }}
+            >
+              {attachedFiles.map((f) => (
+                <div
+                  key={f.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "5px 9px",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "9px",
+                  }}
+                >
+                  {f.type === "image" && f.preview ? (
+                    <img
+                      src={f.preview}
+                      alt={f.file.name}
+                      style={{ width: "28px", height: "28px", objectFit: "cover", borderRadius: "5px" }}
+                    />
+                  ) : (
+                    <FileText size={16} color={f.type === "pdf" ? "#F97316" : "rgba(255,255,255,0.4)"} />
+                  )}
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: "rgba(255,255,255,0.55)",
+                      fontFamily: "'Inter', sans-serif",
+                      maxWidth: "120px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {f.file.name}
+                  </span>
+                  <button
+                    onClick={() => removeFile(f.id)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "rgba(255,255,255,0.25)",
+                      display: "flex",
+                      padding: "1px",
+                      transition: "color 0.15s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.7)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.25)")}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Main input box */}
+          <div
+            style={{
+              background: "rgba(255,255,255,0.055)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "18px",
+              padding: "10px 12px",
+              display: "flex",
+              alignItems: "flex-end",
+              gap: "8px",
+              transition: "border-color 0.2s, box-shadow 0.2s",
+            }}
+            onFocusCapture={(e) => {
+              e.currentTarget.style.borderColor = "rgba(99,102,241,0.45)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.08)";
+            }}
+            onBlurCapture={(e) => {
+              e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            {/* Attach button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach image or PDF"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "rgba(255,255,255,0.3)",
+                padding: "6px",
+                borderRadius: "9px",
+                display: "flex",
+                transition: "all 0.15s",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "rgba(255,255,255,0.75)";
+                e.currentTarget.style.background = "rgba(255,255,255,0.07)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "rgba(255,255,255,0.3)";
+                e.currentTarget.style.background = "none";
+              }}
+            >
+              <Paperclip size={19} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf"
+              style={{ display: "none" }}
+              onChange={handleFileAttach}
+            />
+
+            {/* Textarea */}
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                autoResize(e.target);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about expenses, upload receipts, or request a report…"
+              rows={1}
+              style={{
+                flex: 1,
+                background: "none",
+                border: "none",
+                outline: "none",
+                resize: "none",
+                fontSize: "14px",
+                color: "rgba(255,255,255,0.85)",
+                fontFamily: "'Inter', sans-serif",
+                lineHeight: "1.6",
+                padding: "5px 0",
+                maxHeight: "180px",
+                overflowY: "auto",
+              }}
+            />
+
+            {/* Mic button */}
+            <button
+              onClick={() => setIsRecording((p) => !p)}
+              title={isRecording ? "Stop recording" : "Voice input"}
+              style={{
+                background: isRecording ? "rgba(239,68,68,0.15)" : "none",
+                border: isRecording ? "1px solid rgba(239,68,68,0.3)" : "none",
+                cursor: "pointer",
+                color: isRecording ? "#EF4444" : "rgba(255,255,255,0.3)",
+                padding: "6px",
+                borderRadius: "9px",
+                display: "flex",
+                transition: "all 0.15s",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                if (!isRecording) {
+                  e.currentTarget.style.color = "rgba(255,255,255,0.75)";
+                  e.currentTarget.style.background = "rgba(255,255,255,0.07)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isRecording) {
+                  e.currentTarget.style.color = "rgba(255,255,255,0.3)";
+                  e.currentTarget.style.background = "none";
+                }
+              }}
+            >
+              {isRecording ? <MicOff size={19} /> : <Mic size={19} />}
+            </button>
+
+            {/* Send button */}
+            <button
+              onClick={() => handleSend()}
+              disabled={!canSend}
+              style={{
+                background: canSend
+                  ? "linear-gradient(135deg,#6366F1,#7C3AED)"
+                  : "rgba(255,255,255,0.06)",
+                border: "none",
+                borderRadius: "11px",
+                padding: "9px",
+                cursor: canSend ? "pointer" : "not-allowed",
+                color: canSend ? "white" : "rgba(255,255,255,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.18s",
+                flexShrink: 0,
+                boxShadow: canSend ? "0 0 16px rgba(99,102,241,0.35)" : "none",
+              }}
+            >
+              <Send size={17} />
+            </button>
+          </div>
+
+          {/* Footer hint */}
+          <p
+            style={{
+              margin: "10px 0 0",
+              textAlign: "center",
+              fontSize: "11px",
+              color: "rgba(255,255,255,0.15)",
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            Press Enter to send · Shift+Enter for new line · Supports images &amp; PDFs
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

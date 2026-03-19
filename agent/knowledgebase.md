@@ -35,5 +35,7 @@ The meal expenses would be reimbursed as the **least** of the following:
 1. The Client Visit Expenses would be paid by the Senior Person Travelling and get it reimbursed from the company later.
 2. To claim the expense reimbursement, the employee must upload the clear invoice copy and payment proof on Zoho Expenses.
 3. Inability to furnish the Invoice Copy and Payment proof would lead to disapproval of the expenses.
-4. Any other expenses incurred by an employee must be pre-approved by the management.
-5. Expense Reimbursement Cycle is 15 - 25 of the month.
+4. **Screenshot Quality**: If an uploaded screenshot is considered "FAILED" (corrupt, unreadable, blank, or an error screen), it will be marked as a mismatch.
+5. **Date Compliance**: The transaction date on the receipt MUST fall within the start and end dates of the application's visit duration. Any receipt outside this range is a mismatch.
+6. Any other expenses incurred by an employee must be pre-approved by the management.
+7. Expense Reimbursement Cycle is 15 - 25 of the month.

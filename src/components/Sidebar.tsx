@@ -37,7 +37,7 @@ const employeeNavItems = [
     id: "chat",
     icon: <IconBell size={20} stroke={1.5} />,
     color: "text-purple-500",
-    label: "WhatsApp Chat",
+    label: "Expense Bot",
     href: "/chat",
   },
   {
@@ -100,6 +100,7 @@ const SidebarDemo = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState<"admin" | "employee">("employee");
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
@@ -112,20 +113,23 @@ const SidebarDemo = ({ children }: { children: React.ReactNode }) => {
             ...data,
             user_metadata: {
               full_name: data.full_name,
-              avatar_url: data.avatar_url,
+              avatar_url: data.avatar_url || "",
             },
           });
           setRole(data.role || "employee");
         }
       } catch (err) {
         console.error("Error fetching user profile in sidebar:", err);
+      } finally {
+        setProfileLoaded(true);
       }
     };
     fetchUser();
   }, []);
 
-  const navItems = role === "admin" ? adminNavItems : employeeNavItems;
-  const portalName = role === "admin" ? "Admin Portal" : "Employee Portal";
+  // Only switch to admin nav after profile is confirmed loaded to avoid flash
+  const navItems = profileLoaded && role === "admin" ? adminNavItems : employeeNavItems;
+  const portalName = profileLoaded && role === "admin" ? "Admin Portal" : "Employee Portal";
 
   const activeId =
     navItems.find(
@@ -259,14 +263,19 @@ const SidebarDemo = ({ children }: { children: React.ReactNode }) => {
                 <img
                   src={user.user_metadata.avatar_url}
                   alt="Avatar"
-                  className="h-9 w-9 rounded-full object-cover"
+                  className="h-9 w-9 rounded-full object-cover ring-2 ring-white/10"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.removeAttribute('style'); }}
                 />
-              ) : (
-                <div className="h-9 w-9 rounded-full bg-(--sidebar-border) flex items-center justify-center">
-                  <IconUser
-                    size={18}
-                    className="text-(--sidebar-icon-inactive)"
-                  />
+              ) : null}
+              {(!user?.user_metadata?.avatar_url) && (
+                <div className="h-9 w-9 rounded-full flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)' }}>
+                  <span className="text-sm font-bold text-white leading-none">
+                    {user?.user_metadata?.full_name
+                      ? user.user_metadata.full_name.charAt(0).toUpperCase()
+                      : user?.email
+                      ? user.email.charAt(0).toUpperCase()
+                      : <IconUser size={16} className="text-white" />}
+                  </span>
                 </div>
               )}
 
