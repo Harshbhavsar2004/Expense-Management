@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabase
       .from("applications")
-      .select("*, users(full_name, email)")
+      .select("*, users(full_name, email), total_claimed, reimbursable_amount, reimbursable_count, flagged_count")
       .eq("status", "submitted")
       .order("submitted_at", { ascending: false });
 

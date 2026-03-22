@@ -1,0 +1,23 @@
+import { NextResponse } from "next/server";
+
+export async function POST() {
+  try {
+    const res = await fetch("http://localhost:8000/voice/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return NextResponse.json({ error: err }, { status: res.status });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Could not reach the voice agent server. Is it running?" },
+      { status: 503 }
+    );
+  }
+}

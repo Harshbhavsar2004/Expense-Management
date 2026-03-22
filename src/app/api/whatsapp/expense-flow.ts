@@ -2,13 +2,12 @@
 // expense-flow.ts — Full expense entry state machine
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ExpenseSession, ExtractedReceiptData, ReceiptMismatch } from "./types";
+import type { ExpenseSession, ReceiptMismatch } from "./types";
 import { getSession, setSession, clearSession } from "./session";
-import { sendText, sendCard, sendList, sendImageCard, downloadMedia } from "./whatsapp";
+import { sendText, sendCard, sendList, sendImageCard } from "./whatsapp";
 import { analyseReceipt, predictCategory } from "./vision";
-import { logExpenseRecord } from "./logger";
 import { triggerAudit } from "./agent";
-import { getUserApplications, saveApplicationToSupabase } from "./db";
+import { getUserApplications, saveApplicationToSupabase, uploadReceiptImage } from "./db";
 import { getCityTier } from "./city-tool";
 
 const LOGO_URL =
@@ -295,7 +294,11 @@ export async function handleExpenseFlow(
       );
       extracted.merchantCategory = prediction.category;
 
+      // Upload image to Supabase Storage and keep the public URL
+      const imageUrl = await uploadReceiptImage(mediaBase64, mediaMimeType, phone, 0, supabaseClient);
+
       session.receiptMediaIds = [mediaId];
+      session.receiptImageUrls = imageUrl ? [imageUrl] : [];
       session.extractedReceipts = [extracted];
       session.totalReceiptAmount = extracted.amountNumeric ?? 0;
       session.amount = extracted.amount;
@@ -335,12 +338,12 @@ export async function handleExpenseFlow(
 export async function sendVerificationCard(
   phone: string,
   session: ExpenseSession,
-  mismatch: ReceiptMismatch = { type: "none" }
+  _mismatch: ReceiptMismatch = { type: "none" }
 ): Promise<void> {
   await sendCard(
     phone,
     "Verification",
-    buildVerificationBody(session, mismatch),
+    buildVerificationBody(session, _mismatch),
     "Fristine Infotech · Expense Management",
     [
       { id: "VERIFY_YES",      label: "Confirm"          },
@@ -384,6 +387,7 @@ export async function finalizeExpense(phone: string, session: ExpenseSession, su
       dateMatch: true,
       items: (session.extractedReceipts || []).map((r, i) => ({
         mediaId: session.receiptMediaIds?.[i] || "",
+        imageUrl: session.receiptImageUrls?.[i] || undefined,
         extractedAmount: r.amount || "0",
         utrNumber: r.utrNumber || "",
         transactionId: r.transactionId || "",
@@ -420,13 +424,31 @@ export async function finalizeExpense(phone: string, session: ExpenseSession, su
   if (expenseId) {
     try {
       console.log(`[Flow] Triggering auto-audit for ${expenseId}`);
-      const auditResult = await triggerAudit(expenseId, session);
+      const auditResult = await triggerAudit(expenseId, session, phone);
       if (auditResult) {
         let msg = `*Audit Status Update*\n\n`;
         if (auditResult.verified) {
           msg += `✅ Your expense has been *Verified* against company policy.`;
         } else {
-          msg += `⚠️ *Policy Mismatch Detected*\n\n${auditResult.explanation}\n\nPlease review the details in your dashboard.`;
+          const tags: string[] = auditResult.mismatches ?? [];
+
+          const tagInfo: Record<string, { label: string; desc: string }> = {
+            duplicate_receipt:         { label: "Duplicate Receipt",          desc: "This UTR number was already used in a previous submission." },
+            failed_screenshot:         { label: "Failed Screenshot",          desc: "The payment shows FAILED status — money was not debited." },
+            policy_exceeded:           { label: "Policy Limit Exceeded",      desc: "Claimed amount is above your approved daily limit." },
+            per_person_limit_exceeded: { label: "Per-Person Limit Exceeded",  desc: "Amount per participant exceeds the meal policy cap." },
+            date_range_mismatch:       { label: "Date Outside Visit Window",  desc: "Receipt date does not fall within your approved trip dates." },
+            date_mismatch:             { label: "Date Mismatch",              desc: "Receipt date does not match the date you entered." },
+            amount_mismatch:           { label: "Amount Mismatch",            desc: "Claimed amount differs from the receipt total." },
+            receipt_quality_issue:     { label: "Receipt Quality Issue",      desc: "Payment status is PENDING/UNKNOWN — not yet confirmed." },
+            category_policy_violation: { label: "Category Not Allowed",       desc: "This expense type is not permitted under your policy." },
+          };
+          const flagLines = tags.map((t) => {
+            const info = tagInfo[t] ?? { label: t.replace(/_/g, " "), desc: "" };
+            return `• *${info.label}*\n   ${info.desc}`;
+          }).join("\n\n");
+
+          msg += `⚠️ *${tags.length} issue${tags.length > 1 ? "s" : ""} found*\n\n${flagLines}\n\nView details in your dashboard.`;
         }
         await sendText(phone, msg);
       }

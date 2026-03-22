@@ -2,6 +2,44 @@ import { supabase } from "@/lib/supabase";
 import type { ExpenseRecord, ApplicationRecord } from "./types";
 
 /**
+ * Uploads a receipt image (base64) to Supabase Storage bucket "receipts".
+ * Returns the public URL or null on failure.
+ */
+export async function uploadReceiptImage(
+  base64: string,
+  mimeType: string,
+  phone: string,
+  index: number,
+  supabaseClient?: any
+): Promise<string | null> {
+  const client = supabaseClient || supabase;
+  try {
+    const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
+    const fileName = `${phone}/${Date.now()}_${index}.${ext}`;
+    const buffer = Buffer.from(base64, "base64");
+
+    const { error } = await client.storage
+      .from("receipts")
+      .upload(fileName, buffer, { contentType: mimeType, upsert: false });
+
+    if (error) {
+      console.error("[DB] Storage upload error:", error.message);
+      return null;
+    }
+
+    const { data: urlData } = client.storage
+      .from("receipts")
+      .getPublicUrl(fileName);
+
+    console.log(`[DB] Receipt image uploaded: ${urlData.publicUrl}`);
+    return urlData.publicUrl ?? null;
+  } catch (err) {
+    console.error("[DB] Unexpected error in uploadReceiptImage:", err);
+    return null;
+  }
+}
+
+/**
  * Saves an expense record and its associated receipts to Supabase.
  * Returns the created expense ID or null.
  */
@@ -55,6 +93,7 @@ export async function saveExpenseToSupabase(record: ExpenseRecord, userId?: stri
         expense_id: expenseId,
         user_id: userId,
         media_id: r.mediaId,
+        image_url: r.imageUrl ?? null,
         extracted_amount: r.extractedAmount,
         utr_number: r.utrNumber,
         transaction_id: r.transactionId,

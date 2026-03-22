@@ -56,6 +56,7 @@ export type ExpenseSession = {
   amountNumeric?: number;
   // Receipt — support multiple receipts
   receiptMediaIds?: string[];
+  receiptImageUrls?: string[];       // Supabase Storage public URLs
   extractedReceipts?: ExtractedReceiptData[];
   totalReceiptAmount?: number;
   // Participants
@@ -108,6 +109,7 @@ export type ExpenseRecord = {
     dateMatch: boolean;
     items: {
       mediaId: string;
+      imageUrl?: string;             // Supabase Storage public URL
       extractedAmount: string;
       utrNumber: string;
       transactionId: string;

@@ -6,8 +6,12 @@ export interface ExpenseRow {
   user_name?: string;
   user_phone?: string;
   date_range?: string;
+  date?: string;
   expense_type?: string;
   sub_category?: string;
+  description?: string;
+  amount?: number;
+  approved_amount?: number;
   claimed_amount?: string;
   claimed_amount_numeric?: number;
   participant_type?: string;
@@ -20,11 +24,25 @@ export interface ExpenseRow {
   date_match?: boolean;
   audit_explanation?: string;
   audit_timeline?: string[];
+  audit_result?: {
+    mismatch?: boolean;
+    reason?: string;
+    note?: string;
+  };
+  reimbursable_amount?: string | number;
+  normalized_date_range?: string;
+  upi_screenshot_url?: string;
   application_id?: string;
   client_name?: string;
   city?: string;
   city_tier?: string;
-  receipts?: { transaction_time?: string }[];
+  receipts?: {
+    id: string;
+    image_url: string | null;
+    extracted_amount?: number;
+    transaction_date?: string;
+    transaction_time?: string;
+  }[];
 }
 
 interface ExpensesTableProps {

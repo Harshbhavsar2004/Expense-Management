@@ -1,0 +1,48 @@
+import { createClient } from "@/utils/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
+
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { data: profile } = await supabase.from("users").select("role").eq("id", user.id).single();
+    if (profile?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const category = searchParams.get("category");
+
+    let query = supabase
+      .from("expenses")
+      .select(
+        `id, created_at, user_id, user_name, user_phone, date_range, expense_type,
+         sub_category, claimed_amount, claimed_amount_numeric,
+         participant_type, participant_count, participant_names,
+         verified, verified_at, mismatches,
+         total_receipt_amount, amount_match, date_match,
+         audit_explanation, audit_timeline, city, city_tier, application_id,
+         receipts(id, image_url, extracted_amount, transaction_date, transaction_time)`
+      )
+      .order("created_at", { ascending: false });
+
+    if (from) query = query.gte("created_at", new Date(from).toISOString());
+    if (to) {
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
+      query = query.lte("created_at", toDate.toISOString());
+    }
+    if (category && category !== "all") query = query.eq("expense_type", category);
+
+    const { data, error } = await query;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json(data ?? []);
+  } catch (err) {
+    console.error("[API] admin/expenses/all error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

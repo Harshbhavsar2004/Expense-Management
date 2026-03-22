@@ -22,8 +22,10 @@ const runtime = new CopilotRuntime({
     // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
     "vision_agent":    new HttpAgent({url: "http://localhost:8000/vision-agent/"}),
     // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
-    "chatbot_agent":   new HttpAgent({url: "http://localhost:8000/chatbot_agent/"}),
-  }   
+    "chatbot_agent":     new HttpAgent({url: "http://localhost:8000/chatbot_agent/"}),
+    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
+    "enterprise_agent":  new HttpAgent({url: "http://localhost:8000/enterprise_agent/"}),
+  }
 });
  
 // 3. Build a Next.js API route that handles the CopilotKit runtime requests.

@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { full_name, phone, avatar_url } = body;
+    const { full_name, phone, avatar_url, organization, team } = body;
 
     // Check if phone is already taken by another user
     if (phone) {
@@ -70,13 +70,13 @@ export async function PATCH(req: NextRequest) {
         }
     }
 
+    const updatePayload: Record<string, unknown> = { full_name, phone, avatar_url };
+    if (organization !== undefined) updatePayload.organization = organization;
+    if (team !== undefined) updatePayload.team = team;
+
     const { data: updatedProfile, error } = await supabase
       .from("users")
-      .update({
-        full_name,
-        phone,
-        avatar_url,
-      })
+      .update(updatePayload)
       .eq("id", user.id)
       .select()
       .single();

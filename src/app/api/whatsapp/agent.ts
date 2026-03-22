@@ -82,17 +82,28 @@ export async function getAgentReply(phone: string, text: string): Promise<string
 }
 
 // ── Agent 4: Audit Agent ──────────────────────────────────────────────────────
-export async function triggerAudit(expenseId: string, session: ExpenseSession): Promise<any> {
-  const prompt = `Perform an audit on this expense claim based on company policy. 
-- Expense ID: ${expenseId}
-- Employee: ${session.userName || "Unknown"}
-- Category: ${session.extractedReceipts?.[0]?.merchantCategory || session.expenseType || "Miscellaneous"}
-- City: ${session.city || "Not specified"} (${session.cityTier || "N/A"})
-- Claimed Amount: ₹${session.amountNumeric || 0}
-- Receipt Total: ₹${session.totalReceiptAmount || 0}
-- Date: ${session.extractedReceipts?.[0]?.date || session.dateRange || "Not specified"}
-
-Check meal caps for the city tier and amount/date matches. Always call set_audit_result with a detailed timeline of your analysis.`;
+export async function triggerAudit(expenseId: string, session: ExpenseSession, phone?: string): Promise<any> {
+  const receipt = session.extractedReceipts?.[0];
+  const prompt = [
+    `Perform a full 9-rule audit on this expense claim.`,
+    ``,
+    `Expense ID: ${expenseId}`,
+    `User ID: ${session.userId || ""}`,
+    `User Phone: ${phone || ""}`,
+    `Employee: ${session.userName || "Unknown"}`,
+    `Category: ${receipt?.merchantCategory || session.expenseType || "Miscellaneous"}`,
+    `City: ${session.city || "Not specified"}`,
+    `City Tier: ${session.cityTier || "Tier - III"}`,
+    `Visit Duration: ${session.visitDuration || ""}`,
+    `Participants: ${session.appParticipantCount || 1}`,
+    `Claimed Amount: ${session.amountNumeric || 0}`,
+    `Receipt Total: ${session.totalReceiptAmount || 0}`,
+    `Receipt Date: ${receipt?.date || ""}`,
+    `Receipt Status: ${receipt?.status || "UNKNOWN"}`,
+    `UTR Number: ${receipt?.utrNumber || "not provided"}`,
+    ``,
+    `Apply all 9 mismatch rules using the pre-computed facts. Call set_audit_result exactly once with your verdict.`,
+  ].join("\n");
 
   const res = await fetch(`${AGENT_URL}/audit/`, {
     method: "POST",

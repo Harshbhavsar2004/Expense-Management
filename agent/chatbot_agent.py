@@ -88,14 +88,48 @@ How can I assist you today?"
 → then call showQuickOptions()
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MISMATCH TAG GUIDE — use this when explaining any flagged expense:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. amount_mismatch
+   What it means: The amount you claimed does not match the amount shown on the receipt (difference ≥ ₹1).
+   What to do: Re-upload the correct receipt or raise a correction request.
+
+2. date_mismatch
+   What it means: The date on your uploaded receipt screenshot does not match the expense date you entered.
+   What to do: Verify the receipt corresponds to the expense date, or re-enter the correct date.
+
+3. date_range_mismatch
+   What it means: Your receipt date falls outside the authorised trip/visit window for this application.
+   What to do: Ensure the expense happened within the approved visit period, or create a new application for the correct dates.
+
+4. policy_exceeded
+   What it means: The claimed amount is above your approved spending limit for that category and city tier.
+   What to do: Only the policy-allowed amount will be reimbursed. Contact your manager if you need a temporary limit increase.
+
+5. failed_screenshot
+   What it means: The payment screenshot shows status FAILED — meaning the transaction was never completed and no money was debited.
+   What to do: Re-upload a SUCCESS screenshot for the actual payment you made.
+
+6. duplicate_receipt
+   What it means: The UTR (transaction reference) on this receipt was already used in a previous expense submission.
+   What to do: This is likely a duplicate submission. If it was a genuine separate expense, contact admin to resolve.
+
+7. receipt_quality_issue
+   What it means: The payment status on the screenshot is PENDING or UNKNOWN — the transaction has not been confirmed yet.
+   What to do: Wait for the payment to succeed and re-upload a SUCCESS screenshot.
+
+8. category_policy_violation
+   What it means: The expense category (e.g., Travel, Hotel) is not permitted under your current policy.
+   What to do: Contact admin if you believe this should be approved as an exception.
+
+9. per_person_limit_exceeded
+   What it means: When the total meal amount is divided across all participants, the per-person share exceeds the meal policy limit for your city tier.
+   What to do: Only the policy-allowed per-person amount will be reimbursed for each participant.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AVAILABLE TOOLS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- `showQuickOptions`      — Always call after greeting. Renders option buttons in chat.
-- `explainMismatch`       — Call when user asks about a mismatch. Pass expense_id, expense_type, explanation, mismatches[].
-- `getAuditTimeline`      — Call when user asks for timeline/thought process. Pass expense_id, expense_type, steps[].
-- `getReimbursableAmount` — Call when user asks what is reimbursable. Pass expense_id, expense_type, claimed, reimbursable, policy_note.
 - `getSummaryReport`      — Call when user asks for a full summary. Pass total_claimed, total_reimbursable, flagged_count, clean_count, flag_types.
-- `submitForApproval`     — Call when user explicitly asks to submit the application for approval.
 
 Always prefer calling a tool to render a card over writing plain-text tables or lists for structured data.
 
@@ -148,8 +182,13 @@ def explain_mismatch_tool(
     explanation: str,
     expense_type: Optional[str] = None,
     mismatches: Optional[list[str]] = None,
+    sources: Optional[dict[str, str]] = None,
 ) -> str:
-    """Renders a formatted mismatch explanation card for an expense."""
+    """
+    Renders a formatted mismatch explanation card for an expense.
+    sources is a dict mapping each mismatch tag to its evidence string,
+    e.g. {"duplicate_receipt": "UTR 123 already used in EXP-ABCD on 15 Mar 2026"}.
+    """
     safe_print(f"[ChatbotAgent] Tool explainMismatch called for {expense_id}")
     return f"Mismatch explanation card rendered for {expense_id}."
 
@@ -191,15 +230,6 @@ def get_summary_report_tool(
     return "Summary report card rendered."
 
 
-def submit_for_approval_tool(
-    tool_context: ToolContext,
-    reason: Optional[str] = None,
-) -> str:
-    """Submits the current expense application for admin review."""
-    safe_print("[ChatbotAgent] Tool submit_for_approval called")
-    return "The application has been sent for approval. An admin will review it shortly."
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # AGENT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -218,7 +248,6 @@ chatbot_agent = LlmAgent(
         get_audit_timeline_tool,
         get_reimbursable_amount_tool,
         get_summary_report_tool,
-        submit_for_approval_tool,
     ],
     before_agent_callback=chatbot_before_agent,
     before_model_callback=chatbot_before_model,

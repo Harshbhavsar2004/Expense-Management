@@ -142,6 +142,7 @@ function ChatOptions({ onSelect }: ChatOptionsProps) {
    Result cards
 ───────────────────────────────────── */
 function MismatchCard({ data }: { data: any }) {
+  const sources: Record<string, string> = data.sources ?? {};
   return (
     <div className="ea-card">
       <div className="ea-card-header" style={{ background: "#FEF3C7", borderColor: "#FDE68A" }}>
@@ -151,10 +152,25 @@ function MismatchCard({ data }: { data: any }) {
         </span>
       </div>
       <div className="ea-card-body">
-        <p className="ea-card-text">{data.explanation}</p>
-        <div style={{ marginTop: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {(data.mismatches ?? []).map((m: string) => (
-            <span key={m} className="ea-badge ea-badge-amber">{m}</span>
+            <div key={m} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span className="ea-badge ea-badge-amber" style={{ alignSelf: "flex-start" }}>{m.replace(/_/g, " ")}</span>
+              {sources[m] && (
+                <div style={{
+                  background: "#FFFBEB",
+                  border: "1px solid #FDE68A",
+                  borderRadius: 6,
+                  padding: "5px 8px",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 5,
+                }}>
+                  <span style={{ fontSize: 10, color: "#B45309", flexShrink: 0, marginTop: 1 }}>⊙</span>
+                  <span style={{ fontSize: 11, color: "#78350F", lineHeight: 1.4 }}>{sources[m]}</span>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -330,6 +346,7 @@ export function AuditAgent({
       { name: "expense_type", type: "string", required: false },
       { name: "explanation",  type: "string", required: true },
       { name: "mismatches",   type: "object", required: false },
+      { name: "sources",      type: "object", required: false },
     ],
     handler: async ({ expense_id }) => `Mismatch explained for expense ${expense_id}.`,
     render: ({ args }) => (
@@ -338,6 +355,7 @@ export function AuditAgent({
           expense_type: args.expense_type ?? "Expense",
           explanation:  args.explanation  ?? "",
           mismatches:   args.mismatches   ?? [],
+          sources:      args.sources      ?? {},
         }}
       />
     ),
