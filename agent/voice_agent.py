@@ -276,23 +276,31 @@ async def _call_enterprise_streaming(query: str, admin_id: str, conn: SmallWebRT
                     logger.debug(f"[Voice←Enterprise] Content: {content!r}")
 
                 event_type = event.get("type", "")
-                if event_type in ("AGENT_STEP", "TOOL_CALL"):
+                if event_type in ("AGENT_STEP", "TOOL_CALL", "TOOL_CALL_START"):
                     # Update thinking label based on what's happening
                     label = "Processing..."
-                    if event_type == "TOOL_CALL":
-                        tool_name = event.get("tool_name", "")
-                        if "email" in tool_name.lower():    label = "Drafting email..."
-                        elif "slack" in tool_name.lower():  label = "Messaging Slack..."
-                        elif "user" in tool_name.lower():   label = "Searching users..."
-                        elif "expense" in tool_name.lower(): label = "Fetching expenses..."
+                    tool_name = event.get("tool_name") or event.get("tool") or ""
+                    
+                    if tool_name:
+                        tn = tool_name.lower()
+                        if "email" in tn:    label = "Drafting email..."
+                        elif "slack" in tn:  label = "Messaging Slack..."
+                        elif "user" in tn:   label = "Searching users..."
+                        elif "expense" in tn: label = "Fetching expenses..."
+                        elif "policy" in tn:  label = "Checking policies..."
+                        elif "dashboard" in tn: label = "Generating dashboard..."
+                        else: label = f"Using {tool_name}..."
                     
                     conn.send_app_message({
                         "type": "voice_thinking",
                         "status": "start",
                         "label": label,
                     })
+                elif event_type in ("TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_CHUNK", "TEXT_MESSAGE"):
+                    # Already handled by generic collection above
+                    pass
                 else:
-                    # Log other event types (e.g. TEXT_MESSAGE_CONTENT, RUN_STARTED) for debugging
+                    # Log other event types (e.g. RUN_STARTED) for debugging
                     logger.debug(f"[Voice←Enterprise] Event: {event_type}")
                     continue
 
