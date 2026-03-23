@@ -48,6 +48,10 @@ yarn.lock
 pnpm-lock.yaml
 bun.lockb
 
+# data and logs
+*.sql
+*.txt
+
 # python
 agent/venv/
 agent/__pycache__/
