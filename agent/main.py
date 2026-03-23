@@ -330,13 +330,28 @@ app.add_middleware(
 # AGENT ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
+print("[Main] Including vision_router...", flush=True)
 app.include_router(vision_router)
+print("[Main] ✓ vision_router included", flush=True)
+
+print("[Main] Including category_backend_router...", flush=True)
 app.include_router(category_backend_router)
+print("[Main] ✓ category_backend_router included", flush=True)
 
 add_adk_fastapi_endpoint(app, adk_refiner_agent,  path="/refine/")
 add_adk_fastapi_endpoint(app, adk_audit_agent,    path="/audit/")
 add_adk_fastapi_endpoint(app, adk_chatbot_agent,  path="/chatbot_agent/")
 add_adk_fastapi_endpoint(app, adk_vision_agent,   path="/vision-agent/")
+
+# ─────────────────────────────────────────────────────────────────────────
+# DEBUG: Print all registered routes
+# ─────────────────────────────────────────────────────────────────────────
+print("\n[Main] ═════════════════════════════════════════ REGISTERED ROUTES ═════════════════════════════════════════", flush=True)
+for route in app.routes:
+    if hasattr(route, "path"):
+        methods = getattr(route, "methods", ["*"])
+        print(f"[Main]   {str(methods):20} {route.path}", flush=True)
+print("[Main] ═════════════════════════════════════════════════════════════════════════════════════════════════════\n", flush=True)
 
 
 @app.post("/enterprise_agent/")
@@ -586,10 +601,22 @@ async def disconnect_toolkit(toolkit_name: str, admin_id: str):
 # HEALTH CHECK
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.get("/")
+async def root():
+    """Root endpoint for quick debugging."""
+    return {
+        "status": "running",
+        "message": "Fristine Infotech Expense Agent Server",
+        "port": 8000,
+        "check_health": "GET /health",
+        "check_vision": "GET /vision/health",
+    }
+
 @app.get("/health")
 async def health():
     return {
         "status": "ok",
+        "message": "Fristine Infotech Expense Agent Server is healthy",
         "composio": {
             "configured": bool(os.getenv("COMPOSIO_API_KEY")),
             "auth_configs_loaded": list(_get_auth_configs().keys()),
@@ -598,8 +625,14 @@ async def health():
             "refiner":    "InputRefinerAgent @ POST /refine/",
             "audit":      "AuditAgent        @ POST /audit/",
             "chatbot":    "ChatbotAgent      @ POST /chatbot_agent/",
-            "vision":     "VisionAgent       @ POST /vision-agent/",
+            "vision":     "VisionAgent       @ POST /vision/analyse (direct REST API)",
+            "vision_adk": "VisionAgent (ADK) @ POST /vision-agent/",
             "enterprise": "EnterpriseAgent   @ POST /enterprise_agent/",
+        },
+        "vision_endpoints": {
+            "health": "GET /vision/health",
+            "analyze_receipt": "POST /vision/analyse (mode=receipt)",
+            "analyze_image": "POST /vision/analyse (mode=general)",
         },
     }
 

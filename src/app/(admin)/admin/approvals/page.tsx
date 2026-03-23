@@ -95,20 +95,6 @@ export default function ApprovalsPage() {
 
       if (newStatus === "approved") {
         toast.success(`${app.application_id} approved.`);
-        // 2. If auto-payout is enabled, trigger payout immediately
-        if (config?.auto_payout_enabled) {
-          const payoutRes = await fetch("/api/cashfree/initiate-payout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ applicationId: app.application_id, amount: config.fixed_amount }),
-          });
-          const payoutData = await payoutRes.json();
-          if (payoutRes.ok) {
-            toast.success(`₹${config.fixed_amount.toLocaleString("en-IN")} payout initiated automatically.`);
-          } else {
-            toast.error(`Approved, but payout failed: ${payoutData.error ?? "Unknown error"}. Go to Payouts to retry.`);
-          }
-        }
       } else {
         toast.success(`${app.application_id} rejected.`);
       }

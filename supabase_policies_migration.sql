@@ -5,8 +5,7 @@
 
 
 -- ── 1. Create the policies table ─────────────────────────────────────────────
-
-CREATE TABLE public.policies (
+CREATE TABLE IF NOT EXISTS public.policies (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now(),
@@ -81,6 +80,25 @@ CREATE TRIGGER tr_sync_policy_user_name
     AFTER UPDATE ON public.users
     FOR EACH ROW
     EXECUTE FUNCTION public.sync_policy_user_name();
+
+
+-- ── 3.1 Trigger: auto-create policy for new users ────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.create_default_user_policy()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.policies (user_id, user_name)
+    VALUES (NEW.id, NEW.full_name)
+    ON CONFLICT (user_id) DO NOTHING;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS tr_create_default_user_policy ON public.users;
+CREATE TRIGGER tr_create_default_user_policy
+    AFTER INSERT ON public.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.create_default_user_policy();
 
 
 -- ── 4. Trigger: auto-update updated_at on any change ─────────────────────────

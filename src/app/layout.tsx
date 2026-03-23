@@ -16,7 +16,11 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
         <link
           href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
@@ -27,6 +31,7 @@ export default function RootLayout({
           runtimeUrl="/api/copilotkit"
           agent="chatbot_agent"
           publicApiKey="ck_pub_5ac7c0884dd7ef9667459b5233319710"
+          showDevConsole={false}
         >
           {children}
         </CopilotKit>

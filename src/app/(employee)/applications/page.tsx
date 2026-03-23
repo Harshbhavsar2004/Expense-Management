@@ -39,8 +39,14 @@ type Source = "web" | "whatsapp" | "cliq";
 
 /** Derive source from the DB field (or fall back to user_phone heuristic) */
 function getSource(app: any): Source {
+  const phone = app.user_phone || "";
+  if (phone.startsWith("cliq:")) return "cliq";
+  
+  // Custom prefix logic requested by user
+  if (phone.startsWith("+918600437554")) return "web";      // Audit AI
+  if (phone.startsWith("918600437554"))  return "whatsapp"; // WhatsApp
+  
   if (app.source) return app.source as Source;
-  if (app.user_phone?.startsWith("cliq:")) return "cliq";
   if (app.user_id == null) return "whatsapp";
   return "web";
 }

@@ -339,16 +339,31 @@ export async function saveChatMessage(payload: {
 }
 
 /**
- * Fetch a user profile by phone number.
+ * Fetch a user profile by phone number (robust matching).
  */
 export async function getUserByPhone(phone: string, supabaseClient?: any) {
   const client = supabaseClient || supabase;
-  const { data, error } = await client
+  
+  // Normalize incoming phone: remove all non-digits and take last 10
+  const clean = phone.replace(/\D/g, "");
+  if (clean.length < 10) return null;
+  const last10 = clean.slice(-10);
+
+  // 1. Try exact match first (standard phone column)
+  const { data: exactData } = await client
     .from("users")
     .select("id")
     .eq("phone", phone)
     .single();
+  if (exactData) return exactData;
+
+  // 2. Try matching the last 10 digits in the database
+  // This handles '+91', '91', '0' prefixes and even minor typos in the stored number
+  const { data: suffixData } = await client
+    .from("users")
+    .select("id")
+    .like("phone", `%${last10}`)
+    .single();
     
-  if (error) return null;
-  return data;
+  return suffixData || null;
 }

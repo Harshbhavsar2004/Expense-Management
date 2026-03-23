@@ -139,7 +139,11 @@ vision_router = APIRouter(prefix="/vision")
 @vision_router.get("/health")
 async def vision_health():
     """Health check for vision agent."""
-    return {"status": "ok", "agent": "VisionAgent", "mode": "direct_gemini_api"}
+    print(f"[VisionAgent] ✓ ENDPOINT HIT: /vision/health (GET)", flush=True)
+    return {"status": "ok", "agent": "VisionAgent", "mode": "direct_gemini_api", "endpoints": {
+        "health": "GET /vision/health",
+        "analyse": "POST /vision/analyse"
+    }}
 
 
 @vision_router.post("/analyse")
@@ -162,14 +166,18 @@ async def analyse_image(request: Request) -> JSONResponse:
         "data": { ... }   // structured receipt data or description string
     }
     """
+    print(f"[VisionAgent] ✓ ENDPOINT HIT: /vision/analyse (POST)", flush=True)
     try:
         body = await request.json()
         b64 = body.get("base64")
         mime_type = body.get("mimeType", "image/jpeg")
         mode = body.get("mode", "receipt")
         caption = body.get("caption", "")
+        
+        print(f"[VisionAgent] Request params - mode={mode}, mimeType={mime_type}, base64_len={len(b64) if b64 else 0}", flush=True)
 
         if not b64:
+            print(f"[VisionAgent] ✗ ERROR: Missing base64 field in request", flush=True)
             return JSONResponse({"success": False, "error": "Missing base64 field"}, status_code=400)
 
         print(f"[VisionAgent] Analysing image - mode={mode}, mimeType={mime_type}")
@@ -237,13 +245,16 @@ async def analyse_image(request: Request) -> JSONResponse:
             })
 
     except httpx.HTTPStatusError as e:
-        print(f"[VisionAgent] Gemini API error: {e.response.status_code} {e.response.text}")
+        print(f"[VisionAgent] ✗ Gemini API error: HTTP {e.response.status_code}", flush=True)
+        print(f"[VisionAgent]   Response: {e.response.text[:500]}", flush=True)
         return JSONResponse(
             {"success": False, "error": f"Gemini API error: {e.response.status_code}"},
             status_code=500,
         )
     except Exception as e:
-        print(f"[VisionAgent] Unexpected error: {e}")
+        print(f"[VisionAgent] ✗ Unexpected error: {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 

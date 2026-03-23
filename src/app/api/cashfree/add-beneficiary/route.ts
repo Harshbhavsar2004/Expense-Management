@@ -1,6 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { getCashfreeV2Headers, BASE_URL } from "@/lib/cashfree";
+import { getCashfreeV2Headers, BASE_URL, getBeneficiaryId } from "../../../../lib/cashfree";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,22 +17,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "name, bankAccount and ifsc are required" }, { status: 400 });
     }
 
-    const beneId = `EXPIFY_${user.id}`;
+    const beneId = getBeneficiaryId(user.id);
 
-    // 2. Create beneficiary on Cashfree (v2 — uses x-client-id/secret directly)
-    const cfRes = await fetch(`${BASE_URL}/payout/beneficiary`, {
-      method: "POST",
-      headers: getCashfreeV2Headers(),
-      body: JSON.stringify({
-        beneficiary_id:      beneId,
-        beneficiary_name:    name,
-        beneficiary_email:   email || user.email,
-        beneficiary_phone:   (phone ?? "").replace(/\D/g, ""),
+    // 2. Create beneficiary on Cashfree (v2 - uses getCashfreeV2Headers)
+    const benePayload = {
+      beneficiary_id:   beneId,
+      beneficiary_name: name.replace(/[^a-zA-Z\s]/g, "").slice(0, 100),
+      beneficiary_instrument_details: {
         bank_account_number: bankAccount,
         bank_ifsc:           ifsc.toUpperCase(),
-        beneficiary_address: "India",
-      }),
+      },
+      beneficiary_contact_details: {
+        beneficiary_email: email || user.email,
+        beneficiary_phone: (phone ?? "").replace(/\D/g, "").slice(-10),
+        beneficiary_country_code: "+91",
+      }
+    };
+
+    console.log(`[add-beneficiary] Registering beneficiary ${beneId}...`);
+    const cfRes = await fetch(`${BASE_URL}/beneficiary`, {
+      method: "POST",
+      headers: getCashfreeV2Headers(),
+      body: JSON.stringify(benePayload),
     });
+    
     const cfJson = await cfRes.json();
     console.log("[add-beneficiary] Cashfree response:", JSON.stringify(cfJson));
 

@@ -66,3 +66,28 @@ npm run dev
 
 ## 💾 Database Schema
 The project uses Supabase. Run the SQL migration files in the root directory (`supabase_*.sql`) in your Supabase SQL Editor to set up the required tables and policies.
+
+### 🔄 Phone Number Migration
+If you have existing applications or expenses submitted via WhatsApp/Cliq that aren't linked to user accounts due to phone number format mismatches, run the phone number migration:
+
+#### Option 1: Automated Migration (Recommended)
+```bash
+# Run the migration
+npm run migrate:phones
+
+# Verify the results
+npm run verify:migration
+```
+
+#### Option 2: Manual Migration
+1. Go to your Supabase Dashboard → SQL Editor
+2. Copy and paste the contents of `supabase_phone_migration.sql`
+3. Click "Run" to execute the migration
+
+#### What the Migration Does
+- **Normalizes phone numbers**: Handles `+91` prefixes, `cliq:` prefixes, and various formats
+- **Links existing records**: Updates applications and expenses with NULL `user_id` by matching phone numbers
+- **Future-proofing**: Updates the database triggers to automatically handle phone matching for new records
+- **Performance**: Adds indexes for faster phone number lookups
+
+The migration is safe to run multiple times and will only update records that need fixing.

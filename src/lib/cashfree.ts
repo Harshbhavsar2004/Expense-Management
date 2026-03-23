@@ -145,6 +145,16 @@ export function mapCashfreeStatus(status: string, statusCode: string): "PENDING"
 }
 
 /**
+ * Returns a standardised beneficiary ID: EXPIFY_<userId> with underscores instead of hyphens.
+ * This ensures compatibility with Cashfree V2 which forbids hyphens in IDs.
+ */
+export const getBeneficiaryId = (userId: string): string => {
+  if (!userId) return "";
+  const base = userId.startsWith("EXPIFY_") ? userId : `EXPIFY_${userId}`;
+  return base.replace(/-/g, "_");
+};
+
+/**
  * High-level helper to ensure beneficiary and initiate a transfer.
  * Does NOT perform database updates (caller manages Supabase).
  */
@@ -164,8 +174,8 @@ export async function performCashfreePayout(params: {
   const { applicationId, amount, userRow } = params;
 
   // 1. Ensure beneficiary exists
-  const rawBeneId = userRow.cashfree_bene_id ?? `EXPIFY_${userRow.id}`;
-  const beneId = rawBeneId.replace(/-/g, "_");
+  const rawBeneId = userRow.cashfree_bene_id ?? userRow.id;
+  const beneId = getBeneficiaryId(rawBeneId);
 
   const benePayload: CreateBeneficiaryRequestV2 = {
     beneficiary_id:   beneId,
@@ -181,11 +191,19 @@ export async function performCashfreePayout(params: {
     }
   };
 
+  console.log(`[cashfree] Ensuring beneficiary ${beneId}...`);
   const { ok: beneOk, status: beneStatus, data: beneData } = await createBeneficiaryV2(benePayload);
   const alreadyExists = beneStatus === 409 || beneData.code === "beneficiary_already_exists";
   
   if (!beneOk && !alreadyExists) {
+    console.error(`[cashfree] Beneficiary registration failed:`, beneData);
     throw new Error(`Beneficiary error: ${beneData.message ?? beneStatus}`);
+  }
+
+  if (alreadyExists) {
+    console.log(`[cashfree] Beneficiary ${beneId} already exists.`);
+  } else {
+    console.log(`[cashfree] Beneficiary ${beneId} created successfully.`);
   }
 
   // 2. Initiate transfer

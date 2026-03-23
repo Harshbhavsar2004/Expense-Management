@@ -10,16 +10,17 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
   const [phase, setPhase] = useState<"enter" | "visible" | "done">("enter");
 
   useEffect(() => {
-    // Step 1 — trigger fade-in immediately
     const t1 = setTimeout(() => setPhase("visible"), 50);
 
-    // Step 2 — hold for a moment then fade out
     const t2 = setTimeout(() => {
       setPhase("done");
       setTimeout(() => onComplete?.(), 500);
-    }, 1800);
+    }, 2200);
 
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [onComplete]);
 
   return (
@@ -30,88 +31,117 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
         .ls-root {
           position: fixed;
           inset: 0;
-          background: #0D1117;
+          background: linear-gradient(135deg, #F8FAFC, #EEF2FF);
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
           z-index: 9999;
-          transition: opacity 0.5s ease;
+          transition: opacity 0.6s ease;
         }
-        .ls-root.enter   { opacity: 0; }
-        .ls-root.visible { opacity: 1; }
-        .ls-root.done    { opacity: 0; pointer-events: none; }
 
-        /* ── Main brand block ── */
+        .ls-root.enter { opacity: 0; }
+        .ls-root.visible { opacity: 1; }
+        .ls-root.done { opacity: 0; pointer-events: none; }
+
+        /* Floating animation */
         .ls-brand {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 10px;
-          transform: translateY(0);
-          transition: opacity 0.5s ease, transform 0.5s ease;
+          gap: 12px;
+          animation: float 3s ease-in-out infinite;
+          transition: all 0.6s ease;
         }
+
         .ls-root.enter .ls-brand {
           opacity: 0;
-          transform: translateY(12px);
+          transform: translateY(20px);
         }
+
         .ls-root.visible .ls-brand {
           opacity: 1;
           transform: translateY(0);
         }
 
-        /* Name */
-        .ls-name {
-          font-family: 'Nunito', sans-serif;
-          font-size: 42px;
-          font-weight: 900;
-          color: #FFFFFF;
-          letter-spacing: -0.04em;
-          line-height: 1;
-        }
-        .ls-name span {
-          color: #3B82F6;
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
         }
 
-        /* Tagline */
+        /* Expify text */
+        .ls-name {
+          font-family: 'Nunito', sans-serif;
+          font-size: 44px;
+          font-weight: 900;
+          letter-spacing: -0.04em;
+          position: relative;
+          background: linear-gradient(90deg, #2563EB, #60A5FA, #2563EB);
+          background-size: 200%;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: shimmer 2.5s infinite linear;
+        }
+
+        @keyframes shimmer {
+          0% { background-position: 0%; }
+          100% { background-position: 200%; }
+        }
+
         .ls-by {
           font-family: 'DM Sans', sans-serif;
           font-size: 12px;
           font-weight: 500;
-          color: #475569;
+          color: #64748B;
           letter-spacing: 0.12em;
           text-transform: uppercase;
         }
 
-        /* ── Pulse dot ── */
-        .ls-pulse {
-          margin-top: 40px;
-          width: 6px;
-          height: 6px;
+        /* Loading dots */
+        .ls-dots {
+          display: flex;
+          gap: 8px;
+          margin-top: 32px;
+        }
+
+        .ls-dot {
+          width: 8px;
+          height: 8px;
           border-radius: 50%;
-          background: #3B82F6;
-          animation: ls-pulse 1.4s ease-in-out infinite;
-          opacity: 0;
-          transition: opacity 0.4s ease 0.4s;
+          background: #2563EB;
+          animation: bounce 1.4s infinite ease-in-out;
         }
-        .ls-root.visible .ls-pulse {
-          opacity: 1;
+
+        .ls-dot:nth-child(2) {
+          animation-delay: 0.2s;
         }
-        @keyframes ls-pulse {
-          0%, 100% { transform: scale(1);   opacity: 0.5; }
-          50%       { transform: scale(1.6); opacity: 1;   }
+        .ls-dot:nth-child(3) {
+          animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+          0%, 80%, 100% {
+            transform: scale(0.6);
+            opacity: 0.5;
+          }
+          40% {
+            transform: scale(1);
+            opacity: 1;
+          }
         }
       `}</style>
 
       <div className={`ls-root ${phase}`}>
-
         <div className="ls-brand">
-          <div className="ls-name">Expify<span>.</span></div>
+          <div className="ls-name">Expify</div>
           <div className="ls-by">By Fristine Infotech</div>
         </div>
 
-        <div className="ls-pulse" />
-
+        <div className="ls-dots">
+          <div className="ls-dot"></div>
+          <div className="ls-dot"></div>
+          <div className="ls-dot"></div>
+        </div>
       </div>
     </>
   );

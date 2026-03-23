@@ -71,10 +71,10 @@ function buildRunInput(agentName: string, threadId: string, userText: string) {
 
 // ── Agent 1: General chat ─────────────────────────────────────────────────────
 export async function getAgentReply(phone: string, text: string): Promise<string> {
-  const res = await fetch(`${AGENT_URL}/`, {
+  const res = await fetch(`${AGENT_URL}/chatbot_agent/`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(buildRunInput("ProverbsAgent", phone, text)),
+    body: JSON.stringify(buildRunInput("ChatbotAgent", phone, text)),
   });
   if (!res.ok) throw new Error(`Agent status ${res.status}`);
   const { text: reply } = await readAgentStream(res);

@@ -158,7 +158,17 @@ export async function POST(
         const { data: config } = await supabase.from("payout_config").select("*").eq("id", 1).single();
         
         if (config?.auto_payout_enabled) {
-          const reimbAmt = updateData.reimbursable_amount ?? 0;
+          // If updateData.reimbursable_amount is not set (because it's just an approval),
+          // fetch it from the database first.
+          let reimbAmt = updateData.reimbursable_amount;
+          if (reimbAmt === undefined) {
+             const { data: currentApp } = await supabase
+               .from("applications")
+               .select("reimbursable_amount")
+               .eq("application_id", id)
+               .single();
+             reimbAmt = Number(currentApp?.reimbursable_amount ?? 0);
+          }
           
           if (reimbAmt > 0 && reimbAmt <= config.fixed_amount) {
             console.log(`[auto-payout] Triggering for ${id}, amount: ${reimbAmt}`);

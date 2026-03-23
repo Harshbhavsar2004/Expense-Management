@@ -37,5 +37,6 @@ The meal expenses would be reimbursed as the **least** of the following:
 3. Inability to furnish the Invoice Copy and Payment proof would lead to disapproval of the expenses.
 4. **Screenshot Quality**: If an uploaded screenshot is considered "FAILED" (corrupt, unreadable, blank, or an error screen), it will be marked as a mismatch.
 5. **Date Compliance**: The transaction date on the receipt MUST fall within the start and end dates of the application's visit duration. Any receipt outside this range is a mismatch.
-6. Any other expenses incurred by an employee must be pre-approved by the management.
-7. Expense Reimbursement Cycle is 15 - 25 of the month.
+6. **GST Compliance**: While booking tickets and hotel accommodation, employees MUST provide the company GST details.
+7. Any other expenses incurred by an employee must be pre-approved by the management.
+8. Expense Reimbursement Cycle is 15 - 25 of the month.
