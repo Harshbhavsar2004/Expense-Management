@@ -519,14 +519,6 @@ export default function ApplicationDetailsPage() {
           ) : (
             <>
               {/* Title + status */}
-              <div className="flex items-center gap-2 min-w-0">
-                <h1 className="font-display font-extrabold text-[15px] text-slate-800 tracking-tight truncate max-w-[220px]">
-                  {application?.title || `Report }`}
-                </h1>
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest border shrink-0 ${statusMeta.className}`}>
-                  {statusMeta.label}
-                </span>
-              </div>
 
               {/* Meta */}
               <div className="hidden md:flex items-center gap-3 text-[11px] text-slate-400 font-medium">
