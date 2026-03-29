@@ -4,7 +4,9 @@ Chatbot Agent — always calls showQuickOptions after first greeting.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
 from typing import Any, Optional
 
@@ -28,6 +30,15 @@ def safe_print(msg: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # CALLBACKS
 # ─────────────────────────────────────────────────────────────────────────────
+
+def strip_embeddings(data: Any) -> Any:
+    """Recursively remove keys named 'embedding' from dicts and lists."""
+    if isinstance(data, dict):
+        return {k: strip_embeddings(v) for k, v in data.items() if k != "embedding"}
+    elif isinstance(data, list):
+        return [strip_embeddings(item) for item in data]
+    return data
+
 
 def chatbot_before_agent(callback_context: CallbackContext) -> None:
     session = getattr(callback_context, "session", "unknown")
@@ -141,6 +152,26 @@ IDENTITY & TONE:
 - Never hallucinate audit data — only use what is provided in context.
 """
 
+    # ── 1. Clean llm_request.contents (messages) ──────────────────────────
+    # The frontend often sends 'Copilot Readable' data which includes huge
+    # 768-dim embeddings. We strip these to save tokens and prevent LLM failure.
+    for content in (llm_request.contents or []):
+        for part in (content.parts or []):
+            if hasattr(part, "text") and part.text:
+                try:
+                    # If it's pure JSON, parse, strip, and re-serialize
+                    obj = json.loads(part.text)
+                    part.text = json.dumps(strip_embeddings(obj))
+                except (json.JSONDecodeError, TypeError):
+                    # If it's text containing JSON fragments, use regex replacement for the "embedding": [...] pattern
+                    # Handle both "embedding":[...] and "embedding": [...]
+                    part.text = re.sub(
+                        r'"embedding"\s*:\s*\[[^\]]*\]',
+                        '"embedding": []',
+                        part.text
+                    )
+
+    # ── 2. Inject system prompt ───────────────────────────────────────────
     original = llm_request.config.system_instruction or types.Content(
         role="system", parts=[]
     )

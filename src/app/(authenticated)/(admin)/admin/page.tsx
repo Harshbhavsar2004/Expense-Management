@@ -53,43 +53,6 @@ export default function AdminDashboard() {
   return (
     <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: "28px", maxWidth: "1400px" }}>
 
-      {/* Header banner */}
-      <div className="animate-fade-in" style={{
-        background: "linear-gradient(135deg, #1a1f36 0%, #2d1f5e 50%, #1a3a6b 100%)",
-        borderRadius: "16px", padding: "28px 32px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        position: "relative", overflow: "hidden",
-        boxShadow: "0 4px 24px rgba(99,102,241,0.15)",
-      }}>
-        <div style={{ position: "absolute", right: "20px", top: "-30px", width: "180px", height: "180px", borderRadius: "50%", background: "rgba(99,102,241,0.08)" }} />
-        <div style={{ position: "absolute", right: "120px", bottom: "-50px", width: "130px", height: "130px", borderRadius: "50%", background: "rgba(249,115,22,0.07)" }} />
-
-        <div style={{ zIndex: 1 }}>
-          <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", fontFamily: "'Inter', sans-serif", marginBottom: "8px" }}>
-            Admin Control Center
-          </div>
-          <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 700, color: "white", fontFamily: "'DM Sans', sans-serif" }}>
-            Expense Administration
-          </h2>
-          <p style={{ margin: 0, fontSize: "13px", color: "rgba(255,255,255,0.5)", fontFamily: "'Inter', sans-serif" }}>
-            Monitor, audit and approve all organisational expenses
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: "10px", zIndex: 1 }}>
-          <Link href="/admin/approvals" style={{ textDecoration: "none" }}>
-            <button className="btn-primary typo-button" style={{ background: "#F97316", gap: "6px", padding: "10px 18px" }}>
-              <CheckCircle size={15} /> Approvals ({stats.pending})
-            </button>
-          </Link>
-          <Link href="/admin/expenses" style={{ textDecoration: "none" }}>
-            <button className="btn-secondary typo-button" style={{ background: "rgba(255,255,255,0.08)", color: "white", borderColor: "rgba(255,255,255,0.15)", gap: "6px", padding: "10px 18px" }}>
-              <ReceiptText size={15} /> All Expenses
-            </button>
-          </Link>
-        </div>
-      </div>
-
       {/* Stats grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "16px" }} className="stagger-children">
         <StatCard label="Total Volume"      value={`₹${(stats.total / 100000).toFixed(1)}L`} icon={<CircleDollarSign size={19} />} color="var(--accent)"   bg="var(--accent-light)"  trend="+12.3%" loading={loading} />

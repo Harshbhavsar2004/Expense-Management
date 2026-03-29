@@ -1,101 +1,69 @@
-"""
-Voice Agent — Pipecat pipeline with Sarvam STT/TTS + Google Gemini LLM
-WebRTC via SmallWebRTC.
-
-ARCHITECTURE: Enterprise Bridge — optimised for minimum latency
-───────────────────────────────────────────────────────────────
-The voice LLM has ONE tool: ask_enterprise_agent(query, admin_id).
-That tool POSTs to /enterprise_agent/ and returns the full answer.
-The enterprise agent runs its own Gemini turn with all 17 Supabase tools
-+ all Composio tools (Gmail, Slack, Calendar…) already loaded.
-
-LATENCY MITIGATIONS applied in this file:
-  1. TTS output sample rate set to 8000 Hz (bulbul:v3 supports it).
-     Less audio data generated + less data streamed over WebRTC.
-     Saves ~120 ms on short replies, more on long ones.
-
-  2. HTTP call uses httpx with a 45 s timeout and connection reuse
-     via a module-level AsyncClient (avoids TCP handshake per call).
-
-  3. Enterprise response is streamed via SSE. We start returning the
-     first sentence to the LLM as soon as we see a natural break
-     (sentence-ending punctuation) rather than waiting for the full reply.
-     This lets the voice LLM start generating TTS sooner.
-
-  4. The voice LLM system prompt is kept deliberately short so Gemini
-     flash produces its spoken reply in the fewest possible tokens.
-
-  5. voice_thinking data-channel events keep the UI responsive while
-     the user waits — "Searching expenses…" shows immediately on tool call.
-
-Net latency vs original direct-tool approach:
-  Simple query:       ~1.9 s → ~3.0 s  (+1.1 s for enterprise LLM turn)
-  Tool-chaining:      ~3.5 s → ~4.5 s  (+1.0 s amortised, streaming helps)
-  Composio (email):   N/A    → ~3.5 s  (was impossible before)
-
-Data-channel message types:
-  {"type": "voice_user",         "text": "…"}
-  {"type": "voice_thinking",     "status": "start", "label": "…"}
-  {"type": "voice_thinking",     "status": "clear"}
-  {"type": "voice_assistant",    "text": "…", "is_chunk": bool, "is_final": bool}
-  {"type": "voice_dashboard_id", "id": "…", "title": "…"}
-"""
-
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import re
+import traceback
+import urllib.parse
+from collections import Counter
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Any, Dict, List, Optional
 
 import httpx
+from google import genai
+from google.genai import types
 from loguru import logger
+from embedding_service import generate_query_embedding
+from tool_utils import _load_composio_tools, SanitizedTool
+from google.adk.tools import ToolContext
+from types import SimpleNamespace
 
 print("[voice_agent] Module loading...", flush=True)
-from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.adapters.schemas.tools_schema import ToolsSchema
-import random
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.processors.audio.vad_processor import VADProcessor
-from pipecat.transcriptions.language import Language
-from pipecat.frames.frames import (
-    LLMRunFrame,
-    TranscriptionFrame,
-    TextFrame,
-    LLMFullResponseStartFrame,
-    LLMFullResponseEndFrame,
-)
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.processors.frame_processor import FrameProcessor
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import (
-    LLMContextAggregatorPair,
-    LLMUserAggregatorParams,
-)
-from pipecat.services.google.llm import GoogleLLMService
-from pipecat.services.llm_service import FunctionCallParams
-from pipecat.services.sarvam.stt import SarvamSTTService
-from pipecat.services.sarvam.tts import SarvamTTSService
-from pipecat.transports.base_transport import TransportParams
-from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
-from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 
-print("[voice_agent] All imports OK.", flush=True)
+# ─────────────────────────────────────────────────────────────────────────────
+# Model constants
+# ─────────────────────────────────────────────────────────────────────────────
+
+GEMINI_MODEL        = "gemini-3.1-flash-live-preview"   # ← updated model
+SEND_SAMPLE_RATE    = 16_000   # PCM input:  16 kHz, 16-bit, mono
+RECEIVE_SAMPLE_RATE = 24_000   # PCM output: 24 kHz, 16-bit, mono
+
+# gemini-3.1-flash-live-preview is on v1beta with GOOGLE_API_KEY (same as before)
+_genai_client = genai.Client(
+    http_options=types.HttpOptions(api_version="v1beta"),
+    api_key=os.getenv("GOOGLE_API_KEY", ""),
+)
+
+print("[voice_agent] Constants OK.", flush=True)
+
+
+def get_mock_tool_context(admin_id: str | None = None) -> ToolContext:
+    """
+    Creates a minimal ToolContext (google.adk.agents.context.Context) 
+    that satisfies the constructor requirements for dynamic tool execution.
+    """
+    mock_invocation = SimpleNamespace(
+        session=SimpleNamespace(id="voice-session", state={}),
+        agent=SimpleNamespace(name="VoiceAgent"),
+        invocation_id="voice-inv-" + datetime.now().strftime("%Y%m%d%H%M%S"),
+        user_id=admin_id or "voice-user",
+        user_content=None,
+        run_config=None,
+        # Required for some internal ADK checks
+        app_name="VoiceAgentApp"
+    )
+    # The ADK Context constructor requires an invocation_context
+    return ToolContext(invocation_context=mock_invocation)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Config
+# Persistent HTTP client for Supabase
 # ─────────────────────────────────────────────────────────────────────────────
 
-_ENTERPRISE_URL = os.getenv("ENTERPRISE_AGENT_URL", "http://localhost:8000/enterprise_agent/")
-
-# Module-level persistent HTTP client — reuses the TCP connection to localhost,
-# avoiding a new handshake on every tool call (~20-50 ms saved per call).
 _http_client: httpx.AsyncClient | None = None
+
 
 def _get_http_client() -> httpx.AsyncClient:
     global _http_client
@@ -108,411 +76,1185 @@ def _get_http_client() -> httpx.AsyncClient:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# System prompt — kept short intentionally (fewer tokens = faster voice LLM)
+# Supabase helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are Expify Voice Assistant for Fristine Infotech. Today: {date}.
-
-VOICE RULES:
-- Reply in 1-3 short spoken sentences only. Never more.
-- No markdown, bullets, or symbols. Say "rupees" not the ₹ sign.
-- Speak naturally and warmly. Round amounts to nearest rupee.
-
-YOU HAVE ONE TOOL: ask_enterprise_agent(query, admin_id)
-Use it for every data question, every action (email, Slack, dashboard, policy change).
-Pass the user's question verbatim. Always include admin_id from context: {admin_id}
-
-After the tool returns:
-- Summarise the answer in 1-3 spoken sentences.
-- If a dashboard was created (answer has [dashboard_id:...]) say:
-  "I've created a dashboard — check the chat window."
-
-ANSWER DIRECTLY (no tool needed):
-- Default meal limits: 900 rupees Tier 1, 700 Tier 2, 450 Tier 3 per day.
-- Portal: employees submit expenses via the Expify portal."""
+def _supabase_url() -> str:
+    return os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Active connections
-# ─────────────────────────────────────────────────────────────────────────────
-
-_connections: Dict[str, SmallWebRTCConnection] = {}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Frame processors
-# ─────────────────────────────────────────────────────────────────────────────
-
-class _VoiceSTTBroadcaster(FrameProcessor):
-    def __init__(self, conn: SmallWebRTCConnection):
-        super().__init__()
-        self._conn = conn
-
-    async def process_frame(self, frame, direction):
-        await super().process_frame(frame, direction)
-        await self.push_frame(frame, direction)
-        if isinstance(frame, TranscriptionFrame) and frame.text.strip():
-            self._conn.send_app_message({"type": "voice_user", "text": frame.text.strip()})
-            # Start thinking indicator immediately after user finishes speaking
-            self._conn.send_app_message({"type": "voice_thinking", "status": "start", "label": "Thinking…"})
-
-
-class _VoiceLLMBroadcaster(FrameProcessor):
-    """Streams LLM text chunks to the frontend and clears the thinking indicator."""
-
-    def __init__(self, conn: SmallWebRTCConnection):
-        super().__init__()
-        self._conn = conn
-        self._buf: str = ""
-        self._active: bool = False
-
-    async def process_frame(self, frame, direction):
-        await super().process_frame(frame, direction)
-        await self.push_frame(frame, direction)
-
-        if isinstance(frame, LLMFullResponseStartFrame):
-            self._buf = ""
-            self._active = True
-            # Clear thinking indicator — the spoken reply is starting
-            self._conn.send_app_message({"type": "voice_thinking", "status": "clear"})
-            self._conn.send_app_message({"type": "voice_assistant", "text": "", "is_final": False})
-
-        elif isinstance(frame, TextFrame) and self._active:
-            self._buf += frame.text
-            self._conn.send_app_message({
-                "type": "voice_assistant",
-                "text": frame.text,
-                "is_final": False,
-                "is_chunk": True,
-            })
-
-        elif isinstance(frame, LLMFullResponseEndFrame) and self._active:
-            self._active = False
-            self._conn.send_app_message({"type": "voice_assistant", "text": "", "is_final": True})
-            self._buf = ""
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Enterprise Agent HTTP bridge — with early streaming
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _thinking_label(query: str) -> str:
-    q = query.lower()
-    if any(k in q for k in ("email", "gmail", "send", "mail")):    return "Sending email…"
-    if any(k in q for k in ("slack", "channel")):                  return "Posting to Slack…"
-    if any(k in q for k in ("dashboard", "chart", "graph")):       return "Building dashboard…"
-    if any(k in q for k in ("flag", "mismatch", "audit")):         return "Checking flagged expenses…"
-    if any(k in q for k in ("policy", "limit", "override")):       return "Checking policies…"
-    if any(k in q for k in ("compare", " vs ")):                   return "Comparing users…"
-    if any(k in q for k in ("expense", "claim", "receipt")):       return "Searching expenses…"
-    if any(k in q for k in ("user", "employee", "who")):           return "Looking up user…"
-    if any(k in q for k in ("calendar", "event", "schedule")):     return "Checking calendar…"
-    return "Thinking…"
-
-
-async def _call_enterprise_streaming(query: str, admin_id: str, conn: SmallWebRTCConnection) -> str:
-    """
-    POST to /enterprise_agent/ and collect the full reply.
-
-    LATENCY OPTIMISATION — early sentence extraction:
-    We watch the SSE stream for natural sentence boundaries (. ! ?)
-    If we detect a complete first sentence before the stream finishes,
-    we return it immediately so the voice LLM can start TTS sooner.
-    The full reply is still assembled and returned for the LLM context.
-
-    Dashboard IDs found in the stream are broadcast immediately via
-    the data channel so the frontend can show the button without waiting.
-    """
-    # Construction of a full RunAgentInput compatible JSON payload
-    now = int(datetime.now(timezone.utc).timestamp())
-    
-    # Prepend admin_id to the query for the enterprise agent (matches route.ts pattern)
-    tagged_query = f"[admin_id:{admin_id}] {query}" if admin_id and admin_id != "unknown" else query
-
-    payload = {
-        "thread_id":      f"voice_{conn.pc_id}",
-        "run_id":         f"run_{os.urandom(8).hex()}",
-        "agent_name":     "EnterpriseAgent",
-        "messages": [
-            {
-                "id":         f"msg_{now}",
-                "role":       "user",
-                "content":    tagged_query,
-                "created_at": now
-            }
-        ],
-        "state":           {"admin_user_id": admin_id, "user_id": admin_id},
-        "actions":         [],
-        "context":         [],
-        "tools":           [],
-        "forwarded_props": {},
-    }
-    headers = {
+def _supabase_headers() -> Dict[str, str]:
+    key = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        "Accept": "text/event-stream",
     }
 
-    collected: list[str] = []
-    client = _get_http_client()
 
+def _supabase_service_headers() -> Dict[str, str]:
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+    )
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+
+
+async def _rpc_write(fn: str, payload: Dict[str, Any]) -> Any:
+    url = f"{_supabase_url()}/rest/v1/rpc/{fn}"
+    r = await _get_http_client().post(
+        url, headers=_supabase_service_headers(), json=payload
+    )
+    if not r.is_success:
+        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:400]}")
+    return r.text
+
+
+async def _get(table: str, params: Any) -> Any:
+    r = await _get_http_client().get(
+        f"{_supabase_url()}/rest/v1/{table}",
+        headers={**_supabase_headers(), "Prefer": "return=representation"},
+        params=params,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+async def _rpc(fn: str, payload: Dict[str, Any]) -> Any:
+    r = await _get_http_client().post(
+        f"{_supabase_url()}/rest/v1/rpc/{fn}",
+        headers=_supabase_headers(),
+        json=payload,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def _ok(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
+def _err(msg: str) -> str:
+    return json.dumps({"error": msg})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool implementations  (logic identical to original)
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def resolve_user(
+    name=None, phone=None, user_id=None, organization=None, team=None
+) -> str:
+    """Find users by name, phone, UUID, organization, or team."""
+    logger.debug(f"resolve_user: name={name} phone={phone} user_id={user_id}")
     try:
-        async with client.stream("POST", _ENTERPRISE_URL, json=payload, headers=headers) as resp:
-            resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                raw = line[5:].strip()
-                if not raw or raw == "[DONE]":
-                    continue
-                try:
-                    event = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
+        select_cols = "id,full_name,role,phone,email,created_at,organization,team"
+        client = _get_http_client()
+        if name:
+            safe = name.replace("*", "").strip()
+            encoded = urllib.parse.quote(f"ilike.*{safe}*", safe=".*")
+            url = f"{_supabase_url()}/rest/v1/users?select={select_cols}&full_name={encoded}"
+            if phone:
+                url += f"&phone=eq.{phone}"
+            if user_id:
+                url += f"&id=eq.{user_id}"
+            if organization:
+                url += f"&organization=eq.{urllib.parse.quote(organization)}"
+            if team:
+                url += f"&team=eq.{urllib.parse.quote(team)}"
+            r = await client.get(url, headers=_supabase_headers())
+        elif phone or user_id or organization or team:
+            params = [("select", select_cols)]
+            if phone:
+                params.append(("phone", f"eq.{phone}"))
+            if user_id:
+                params.append(("id", f"eq.{user_id}"))
+            if organization:
+                params.append(("organization", f"eq.{organization}"))
+            if team:
+                params.append(("team", f"eq.{team}"))
+            r = await client.get(
+                f"{_supabase_url()}/rest/v1/users",
+                headers=_supabase_headers(),
+                params=params,
+            )
+        else:
+            return _err("Provide at least name, phone, user_id, organization, or team.")
 
-                # --- [CORE FIX] Collect any string content from text-bearing events ---
-                content = event.get("delta") or event.get("text") or event.get("content")
-                if isinstance(content, str) and content:
-                    collected.append(content)
-                    logger.debug(f"[Voice←Enterprise] Content: {content!r}")
-
-                event_type = event.get("type", "")
-                if event_type in ("AGENT_STEP", "TOOL_CALL", "TOOL_CALL_START"):
-                    # Update thinking label based on what's happening
-                    label = "Processing..."
-                    tool_name = event.get("tool_name") or event.get("tool") or ""
-                    
-                    if tool_name:
-                        tn = tool_name.lower()
-                        if "email" in tn:    label = "Drafting email..."
-                        elif "slack" in tn:  label = "Messaging Slack..."
-                        elif "user" in tn:   label = "Searching users..."
-                        elif "expense" in tn: label = "Fetching expenses..."
-                        elif "policy" in tn:  label = "Checking policies..."
-                        elif "dashboard" in tn: label = "Generating dashboard..."
-                        else: label = f"Using {tool_name}..."
-                    
-                    conn.send_app_message({
-                        "type": "voice_thinking",
-                        "status": "start",
-                        "label": label,
-                    })
-                elif event_type in ("TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_CHUNK", "TEXT_MESSAGE"):
-                    # Already handled by generic collection above
-                    pass
-                else:
-                    # Log other event types (e.g. RUN_STARTED) for debugging
-                    logger.debug(f"[Voice←Enterprise] Event: {event_type}")
-                    continue
-
-                # Broadcast dashboard IDs the moment they appear in the stream
-                partial = "".join(collected)
-                for m in re.finditer(r'\[dashboard_id:([^\]]+)\]([^\[\n]*)', partial):
-                    conn.send_app_message({
-                        "type": "voice_dashboard_id",
-                        "id": m.group(1).strip(),
-                        "title": m.group(2).strip() or query,
-                    })
-
-    except httpx.HTTPStatusError as exc:
-        logger.error(f"[Voice] Enterprise HTTP {exc.response.status_code}")
-        return f"Error: enterprise agent returned {exc.response.status_code}."
+        if not r.is_success:
+            return _err(f"Supabase error {r.status_code}: {r.text[:200]}")
+        rows = r.json()
+        if not rows:
+            return _ok({"found": False, "message": f"No user found matching '{name or phone}'."})
+        return _ok({"found": True, "count": len(rows), "users": rows})
     except Exception as exc:
-        logger.error(f"[Voice] Enterprise call failed: {exc}")
-        return "Error reaching the data service. Please try again."
-
-    return "".join(collected).strip() or "No response from enterprise agent."
+        return _err(str(exc))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tool schema — single tool for voice LLM
-# ─────────────────────────────────────────────────────────────────────────────
-
-_TOOLS = ToolsSchema(standard_tools=[
-    FunctionSchema(
-        name="ask_enterprise_agent",
-        description=(
-            "Ask the enterprise agent a question or give it a task. "
-            "Use for ALL data queries (expenses, users, policies, flagged items, stats, duplicates), "
-            "ALL external actions (send email, post Slack message, create calendar event, export to Sheets), "
-            "and ALL dashboard/chart requests. "
-            "Pass the user's question almost verbatim. Always include admin_id."
-        ),
-        properties={
-            "query": {
-                "type": "string",
-                "description": "The user's full question or task verbatim.",
-            },
-            "admin_id": {
-                "type": "string",
-                "description": "The admin's UUID from session context. Required for Composio OAuth.",
-            },
-        },
-        required=["query", "admin_id"],
-    ),
-])
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# WebRTC offer / ICE handlers
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def handle_offer(body: dict) -> dict:
-    print(f"[voice_agent] handle_offer. keys={list(body.keys())}", flush=True)
-    pc_id    = body.get("pc_id")
-    admin_id = body.get("admin_id", "")
-
-    if pc_id and pc_id in _connections:
-        conn = _connections[pc_id]
-        await conn.renegotiate(
-            sdp=body["sdp"], type=body["type"],
-            restart_pc=body.get("restart_pc", False),
-        )
-    else:
-        conn = SmallWebRTCConnection(ice_servers=["stun:stun.l.google.com:19302"])
-
-        @conn.event_handler("closed")
-        async def handle_closed(c: SmallWebRTCConnection):
-            _connections.pop(c.pc_id, None)
-
-        await conn.initialize(sdp=body["sdp"], type=body["type"])
-        asyncio.create_task(_run_voice_pipeline(conn, admin_id))
-
-    answer = conn.get_answer()
-    _connections[answer["pc_id"]] = conn
-    return answer
-
-
-async def handle_ice(body: dict) -> None:
-    conn = _connections.get(body.get("pc_id", ""))
-    if conn:
-        for candidate in body.get("candidates", []):
-            await conn.add_ice_candidate(candidate)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Pipeline
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def _run_voice_pipeline(conn: SmallWebRTCConnection, admin_id: str = "") -> None:
-    logger.info(f"[Voice] Pipeline start. admin_id={admin_id!r}")
-
-    system_message = SYSTEM_PROMPT.format(
-        date=datetime.now(timezone.utc).strftime("%d %B %Y"),
-        admin_id=admin_id or "unknown",
-    )
-
-    transport = SmallWebRTCTransport(
-        webrtc_connection=conn,
-        params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
-    )
-
-    stt = SarvamSTTService(
-        api_key=os.getenv("SARVAM_API_KEY", ""),
-        settings=SarvamSTTService.Settings(
-            model="saaras:v3",
-            language="en-IN",
-        ),
-    )
-
-    llm = GoogleLLMService(
-        api_key=os.getenv("GOOGLE_API_KEY", ""),
-        # Explicitly set global function call timeout to 60s (was defaulting to 10s)
-        function_call_timeout_secs=60.0,
-        settings=GoogleLLMService.Settings(
-            model="gemini-2.5-flash",
-            system_instruction=system_message,
-        ),
-    )
-
-    tts = SarvamTTSService(
-        api_key=os.getenv("SARVAM_API_KEY", ""),
-        sample_rate=8000,
-        settings=SarvamTTSService.Settings(
-            model="bulbul:v3",
-            voice="shubh",
-        ),
-    )
-
-    # ── Register the enterprise bridge tool ───────────────────────────────────
-
-    async def _tool_ask_enterprise(params: FunctionCallParams) -> None:
-        query: str    = params.arguments.get("query", "")
-        # Priority: capture at connection time (admin_id), then LLM passed (if not 'unknown')
-        aid: str      = admin_id or params.arguments.get("admin_id", "")
-        if aid == "unknown":
-            aid = admin_id or ""
-
-        conn.send_app_message({
-            "type": "voice_thinking",
-            "status": "start",
-            "label": _thinking_label(query),
-        })
-
-        logger.info(f"[Voice→Enterprise] admin={aid!r} query={query[:80]!r}")
-        result = await _call_enterprise_streaming(query, aid, conn)
-        logger.info(f"[Voice←Enterprise] {len(result)} chars")
-
-        await params.result_callback(result)
-
-    llm.register_function("ask_enterprise_agent", _tool_ask_enterprise, timeout_secs=60)
-
-    # ── Context + aggregators ─────────────────────────────────────────────────
-    context = LLMContext(tools=_TOOLS)
-    user_agg, asst_agg = LLMContextAggregatorPair(
-        context,
-        user_params=LLMUserAggregatorParams(),
-    )
-
-    vad_analyzer = SileroVADAnalyzer()
-    vad_processor = VADProcessor(vad_analyzer=vad_analyzer)
-
-    pipeline = Pipeline([
-        transport.input(),
-        stt,
-        vad_processor,  # Explicitly gate audio entering STT & emit VAD frames
-        _VoiceSTTBroadcaster(conn),
-        user_agg,
-        llm,
-        _VoiceLLMBroadcaster(conn),
-        tts,
-        transport.output(),
-        asst_agg,
-    ])
-
-    @transport.event_handler("on_audio_frame")
-    async def on_audio_frame(transport, frame):
-        # Sample log to confirm audio is flowing from WebRTC
-        if random.random() < 0.01:
-            logger.debug(f"[Voice] Audio frame flow confirmed. admin_id={admin_id!r}")
-
-    @stt.event_handler("on_transcription_result")
-    async def on_transcription_result(stt, transcription):
-        logger.info(f"[STT] Received transcript: {transcription!r}")
-
-    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
-
-    @transport.event_handler("on_client_connected")
-    async def on_connected(transport, client):
-        logger.info("[Voice] Client connected.")
-        context.add_message({
-            "role": "user",
-            "content": (
-                "Greet the user warmly and briefly introduce yourself as Expify Voice Assistant. "
-                "Mention you can answer live questions about expenses, policies, "
-                "and can send emails or Slack messages."
-            ),
-        })
-        await task.queue_frames([LLMRunFrame()])
-
-    @transport.event_handler("on_client_disconnected")
-    async def on_disconnected(transport, client):
-        logger.info("[Voice] Client disconnected.")
-        await task.cancel()
-
-    runner = PipelineRunner(handle_sigint=False)
+async def get_user_stats(user_id=None) -> str:
+    """Get expense statistics for a user or all users."""
     try:
-        await runner.run(task)
-    finally:
-        # Ensure thinking and status are cleared on shutdown
-        conn.send_app_message({"type": "voice_thinking", "status": "clear"})
-    logger.info("[Voice] Pipeline finished.")
+        params: Dict[str, Any] = {"select": "*"}
+        if user_id:
+            params["user_id"] = f"eq.{user_id}"
+        return _ok(await _get("user_expense_stats", params))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def compare_two_users(user_id_a: str, user_id_b: str) -> str:
+    """Compare expense stats for two users side-by-side."""
+    try:
+        rows = await _get(
+            "user_expense_stats",
+            {"select": "*", "user_id": f"in.({user_id_a},{user_id_b})"},
+        )
+        if not rows:
+            return _err("No stats found.")
+        by_id = {r["user_id"]: r for r in rows}
+        a, b = by_id.get(user_id_a), by_id.get(user_id_b)
+        if not a or not b:
+            missing = [u for u in [user_id_a, user_id_b] if u not in by_id]
+            return _err(f"Stats not found for: {', '.join(missing)}")
+
+        def _f(r, k):
+            try:
+                return float(r.get(k) or 0)
+            except Exception:
+                return 0.0
+
+        ca, cb = _f(a, "total_claimed"), _f(b, "total_claimed")
+        ra, rb = _f(a, "reimbursement_rate_pct"), _f(b, "reimbursement_rate_pct")
+        higher = (
+            (a.get("full_name") or user_id_a)
+            if ca >= cb
+            else (b.get("full_name") or user_id_b)
+        )
+        return _ok({
+            "user_a": a,
+            "user_b": b,
+            "deltas": {
+                "claimed_diff": round(float(ca - cb), 2),
+                "reimbursement_rate_diff_pct": round(float(ra - rb), 4),
+                "note": f"{higher} claims more overall.",
+            },
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def semantic_search_expenses(
+    query: str, user_id=None, limit: int = 8
+) -> str:
+    """Search expenses using natural language (semantic / vector search)."""
+    try:
+        vector = generate_query_embedding(query)
+        if vector is None:
+            return _err("Could not generate embedding.")
+        rows = await _rpc(
+            "match_expenses",
+            {"query_embedding": vector, "match_count": limit, "filter_user_id": user_id},
+        )
+        return _ok(rows)
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_applications(
+    user_id=None, status=None, organization=None, team=None, limit: int = 30,
+) -> str:
+    """Fetch expense applications with optional filters."""
+    try:
+        select_clause = "*"
+        if organization or team:
+            select_clause = "*,users!inner(organization,team)"
+        params = [
+            ("select", select_clause),
+            ("order", "created_at.desc"),
+            ("limit", str(limit)),
+        ]
+        if user_id:
+            params.append(("user_id", f"eq.{user_id}"))
+        if status:
+            params.append(("status", f"eq.{status}"))
+        if organization:
+            params.append(("users.organization", f"eq.{organization}"))
+        if team:
+            params.append(("users.team", f"eq.{team}"))
+        r = await _get_http_client().get(
+            f"{_supabase_url()}/rest/v1/applications",
+            headers=_supabase_headers(),
+            params=params,
+        )
+        r.raise_for_status()
+        return _ok(r.json())
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_policies(user_id=None) -> str:
+    """Fetch reimbursement policies for a user or all users."""
+    try:
+        params: Dict[str, Any] = {"select": "*"}
+        if user_id:
+            params["user_id"] = f"eq.{user_id}"
+        return _ok(await _get("policies", params))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def set_policy_override(
+    user_id, set_by, valid_from, valid_until, reason,
+    meal_tier1=None, meal_tier2=None, meal_tier3=None,
+    travel_limit=None, hotel_limit=None,
+) -> str:
+    """Set a temporary policy override for a user. Admin only."""
+    try:
+        payload: Dict[str, Any] = {
+            "p_user_id": user_id,
+            "p_set_by": set_by,
+            "p_valid_from": valid_from,
+            "p_valid_until": valid_until,
+            "p_reason": reason,
+        }
+        if meal_tier1 is not None: payload["p_meal_tier1"] = meal_tier1
+        if meal_tier2 is not None: payload["p_meal_tier2"] = meal_tier2
+        if meal_tier3 is not None: payload["p_meal_tier3"] = meal_tier3
+        if travel_limit is not None: payload["p_travel_limit"] = travel_limit
+        if hotel_limit is not None: payload["p_hotel_limit"] = hotel_limit
+        await _rpc_write("set_temporary_override", payload)
+        return _ok({"success": True, "message": f"Policy override set for {user_id}."})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def clear_policy_override(user_id: str) -> str:
+    """Clear an active policy override for a user. Admin only."""
+    try:
+        await _rpc_write("clear_override", {"p_user_id": user_id})
+        return _ok({"success": True, "message": f"Override cleared for {user_id}."})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_duplicate_receipts() -> str:
+    """Find receipts submitted with duplicate UTR numbers (potential fraud)."""
+    try:
+        rows = await _get(
+            "receipts",
+            {"select": "utr_number,expense_id", "utr_number": "neq."},
+        )
+        groups: Dict[str, List[str]] = {}
+        for r in rows:
+            utr = (r.get("utr_number") or "").strip()
+            if utr:
+                groups.setdefault(utr, []).append(r.get("expense_id", ""))
+        dups = [
+            {"utr_number": u, "occurrences": len(ids), "expense_ids": ids}
+            for u, ids in groups.items()
+            if len(ids) > 1
+        ]
+        dups.sort(key=lambda x: x["occurrences"], reverse=True)
+        return _ok(dups)
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_mismatch_breakdown(user_id=None) -> str:
+    """Count frequency of each mismatch tag across all expenses."""
+    try:
+        params: Dict[str, Any] = {"select": "mismatches"}
+        if user_id:
+            params["user_id"] = f"eq.{user_id}"
+        rows = await _get("expenses", params)
+        counter: Counter = Counter()
+        for r in rows:
+            tags = r.get("mismatches") or []
+            if isinstance(tags, list):
+                counter.update(tags)
+        return _ok(dict(counter.most_common()))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def search_expenses_by_amount(
+    min_amount=None, max_amount=None, user_id=None
+) -> str:
+    """Search expenses within a claimed amount range."""
+    try:
+        cols = (
+            "id,user_name,expense_type,claimed_amount_numeric,"
+            "reimbursable_amount,verified,mismatches,application_id,city_tier"
+        )
+        base = [
+            ("select", cols),
+            ("order", "claimed_amount_numeric.desc"),
+            ("limit", "100"),
+        ]
+        if user_id:
+            base.append(("user_id", f"eq.{user_id}"))
+        if min_amount is not None:
+            base.append(("claimed_amount_numeric", f"gte.{min_amount}"))
+        if max_amount is not None:
+            base.append(("claimed_amount_numeric", f"lte.{max_amount}"))
+        r = await _get_http_client().get(
+            f"{_supabase_url()}/rest/v1/expenses",
+            headers={**_supabase_headers(), "Prefer": "return=representation"},
+            params=base,
+        )
+        r.raise_for_status()
+        return _ok(r.json())
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_chat_history(user_phone=None, limit: int = 20) -> str:
+    """Fetch recent chat messages, optionally filtered by user phone."""
+    try:
+        params: Dict[str, Any] = {
+            "select": "*",
+            "order": "created_at.desc",
+            "limit": str(limit),
+        }
+        if user_phone:
+            params["phone"] = f"eq.{user_phone}"
+        return _ok(await _get("chat_messages", params))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_users(role=None, organization=None, team=None) -> str:
+    """List users with optional filters by role, organization, or team."""
+    try:
+        params = [
+            ("select", "id,full_name,role,phone,email,created_at,organization,team")
+        ]
+        if role:
+            params.append(("role", f"eq.{role}"))
+        if organization:
+            params.append(("organization", f"eq.{organization}"))
+        if team:
+            params.append(("team", f"eq.{team}"))
+        r = await _get_http_client().get(
+            f"{_supabase_url()}/rest/v1/users",
+            headers={**_supabase_headers(), "Prefer": "return=representation"},
+            params=params,
+        )
+        r.raise_for_status()
+        return _ok({"count": len(r.json()), "users": r.json()})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_flagged_expenses(
+    user_id=None, mismatch_type=None, application_id=None, limit: int = 50,
+) -> str:
+    """Fetch detailed flagged/mismatched expenses for auditing."""
+    try:
+        params = [
+            (
+                "select",
+                (
+                    "id,user_name,application_id,client_name,visit_duration,"
+                    "expense_type,date_range,claimed_amount,claimed_amount_numeric,"
+                    "reimbursable_amount,verified,mismatches,audit_explanation,"
+                    "audit_sources,city,city_tier,created_at,participant_names,"
+                    "participant_count"
+                ),
+            ),
+            ("verified", "eq.false"),
+            ("order", "created_at.desc"),
+            ("limit", str(min(limit, 200))),
+        ]
+        if user_id:
+            params.append(("user_id", f"eq.{user_id}"))
+        if application_id:
+            params.append(("application_id", f"eq.{application_id}"))
+        r = await _get_http_client().get(
+            f"{_supabase_url()}/rest/v1/expenses",
+            headers={**_supabase_headers(), "Prefer": "return=representation"},
+            params=params,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if mismatch_type:
+            rows = [row for row in rows if mismatch_type in (row.get("mismatches") or [])]
+        if not rows:
+            return _ok({"count": 0, "message": "No flagged expenses found.", "flagged_expenses": []})
+        enriched = []
+        for row in rows:
+            mismatches = row.get("mismatches") or []
+            sources = row.get("audit_sources") or {}
+            if isinstance(sources, str):
+                try:
+                    sources = json.loads(sources)
+                except Exception:
+                    sources = {}
+            enriched.append({
+                "expense_id":      row.get("id"),
+                "employee":        row.get("user_name"),
+                "application_id":  row.get("application_id"),
+                "client":          row.get("client_name") or "N/A",
+                "visit_duration":  row.get("visit_duration") or "N/A",
+                "expense_date":    row.get("date_range") or "N/A",
+                "expense_type":    row.get("expense_type"),
+                "claimed_amount":  row.get("claimed_amount"),
+                "reimbursable_amount": row.get("reimbursable_amount") or 0,
+                "city":            row.get("city") or "N/A",
+                "city_tier":       row.get("city_tier") or "N/A",
+                "participants":    row.get("participant_count"),
+                "mismatch_flags":  mismatches,
+                "mismatch_count":  len(mismatches),
+                "mismatch_details": sources,
+                "audit_explanation": row.get("audit_explanation") or "No explanation available",
+                "submitted_at":    row.get("created_at"),
+            })
+        return _ok({"count": len(enriched), "flagged_expenses": enriched})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def get_expenses_detail(
+    user_id=None, application_id=None, verified=None,
+    organization=None, team=None, limit: int = 50,
+) -> str:
+    """Fetch expense records with comprehensive filters."""
+    try:
+        select_clause = (
+            "id,user_name,application_id,client_name,visit_duration,expense_type,"
+            "date_range,claimed_amount,claimed_amount_numeric,reimbursable_amount,"
+            "verified,mismatches,audit_explanation,city,city_tier,created_at,"
+            "participant_names,participant_count"
+        )
+        if organization or team:
+            select_clause += ",users!inner(organization,team)"
+        params = [
+            ("select", select_clause),
+            ("order", "created_at.desc"),
+            ("limit", str(min(limit, 200))),
+        ]
+        if user_id:
+            params.append(("user_id", f"eq.{user_id}"))
+        if application_id:
+            params.append(("application_id", f"eq.{application_id}"))
+        if verified is not None:
+            params.append(("verified", f"eq.{str(verified).lower()}"))
+        if organization:
+            params.append(("users.organization", f"eq.{organization}"))
+        if team:
+            params.append(("users.team", f"eq.{team}"))
+        r = await _get_http_client().get(
+            f"{_supabase_url()}/rest/v1/expenses",
+            headers={**_supabase_headers(), "Prefer": "return=representation"},
+            params=params,
+        )
+        r.raise_for_status()
+        return _ok({"count": len(r.json()), "expenses": r.json()})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def generate_dashboard(title: str, charts_json: str) -> str:
+    """Generate a visual dashboard and persist it. Returns [dashboard_id:uuid]Title."""
+    try:
+        charts = json.loads(charts_json)
+        r = await _get_http_client().post(
+            f"{_supabase_url()}/rest/v1/dashboards",
+            headers={**_supabase_service_headers(), "Prefer": "return=representation"},
+            json={"spec": {"type": "dashboard", "title": title, "charts": charts}},
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return "Dashboard creation failed: No ID returned"
+        return f"[dashboard_id:{rows[0].get('id')}]{title}"
+    except Exception as exc:
+        return f"Failed to create dashboard: {exc}"
+
+
+async def save_dashboard(spec: str) -> str:
+    """Persist a raw dashboard specification JSON string."""
+    try:
+        r = await _get_http_client().post(
+            f"{_supabase_url()}/rest/v1/dashboards",
+            headers={**_supabase_service_headers(), "Prefer": "return=representation"},
+            json={"spec": json.loads(spec)},
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            return _err("No data returned after insert")
+        return _ok({"id": rows[0].get("id")})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool dispatch map
+# ─────────────────────────────────────────────────────────────────────────────
+
+TOOL_MAP = {
+    "resolve_user":              resolve_user,
+    "get_user_stats":            get_user_stats,
+    "compare_two_users":         compare_two_users,
+    "semantic_search_expenses":  semantic_search_expenses,
+    "get_applications":          get_applications,
+    "get_policies":              get_policies,
+    "set_policy_override":       set_policy_override,
+    "clear_policy_override":     clear_policy_override,
+    "get_duplicate_receipts":    get_duplicate_receipts,
+    "get_mismatch_breakdown":    get_mismatch_breakdown,
+    "search_expenses_by_amount": search_expenses_by_amount,
+    "get_chat_history":          get_chat_history,
+    "get_users":                 get_users,
+    "get_flagged_expenses":      get_flagged_expenses,
+    "get_expenses_detail":       get_expenses_detail,
+    "generate_dashboard":        generate_dashboard,
+    "save_dashboard":            save_dashboard,
+}
+
+
+def _thinking_label(name: str) -> str:
+    n = name.lower()
+    if "expense"   in n: return "Fetching expenses..."
+    if "user"      in n: return "Searching users..."
+    if "polic"     in n: return "Checking policies..."
+    if "dashboard" in n: return "Generating dashboard..."
+    if "duplicate" in n: return "Checking for duplicates..."
+    if "mismatch"  in n: return "Analysing mismatches..."
+    return f"Using {name}..."
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gemini Live tool declarations
+# ─────────────────────────────────────────────────────────────────────────────
+
+GEMINI_TOOLS = [
+    types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name="resolve_user",
+                description=(
+                    "Find users by name, phone, UUID, organization, or team. "
+                    "Always call this first if you only have a name."
+                ),
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "name":         types.Schema(type=types.Type.STRING),
+                        "phone":        types.Schema(type=types.Type.STRING),
+                        "user_id":      types.Schema(type=types.Type.STRING),
+                        "organization": types.Schema(type=types.Type.STRING),
+                        "team":         types.Schema(type=types.Type.STRING),
+                    },
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_user_stats",
+                description="Get expense statistics for a user or all users.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={"user_id": types.Schema(type=types.Type.STRING)},
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="compare_two_users",
+                description="Compare expense stats for two users side-by-side.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "user_id_a": types.Schema(type=types.Type.STRING),
+                        "user_id_b": types.Schema(type=types.Type.STRING),
+                    },
+                    required=["user_id_a", "user_id_b"],
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="semantic_search_expenses",
+                description="Search expenses using natural language (semantic search).",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "query":   types.Schema(type=types.Type.STRING),
+                        "user_id": types.Schema(type=types.Type.STRING),
+                        "limit":   types.Schema(type=types.Type.INTEGER),
+                    },
+                    required=["query"],
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_applications",
+                description="Fetch expense applications with optional filters.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "user_id":      types.Schema(type=types.Type.STRING),
+                        "status":       types.Schema(type=types.Type.STRING),
+                        "organization": types.Schema(type=types.Type.STRING),
+                        "team":         types.Schema(type=types.Type.STRING),
+                        "limit":        types.Schema(type=types.Type.INTEGER),
+                    },
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_policies",
+                description="Fetch reimbursement policies.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={"user_id": types.Schema(type=types.Type.STRING)},
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="set_policy_override",
+                description="Set a temporary policy override. Admin only.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "user_id":      types.Schema(type=types.Type.STRING),
+                        "set_by":       types.Schema(type=types.Type.STRING),
+                        "valid_from":   types.Schema(type=types.Type.STRING),
+                        "valid_until":  types.Schema(type=types.Type.STRING),
+                        "reason":       types.Schema(type=types.Type.STRING),
+                        "meal_tier1":   types.Schema(type=types.Type.NUMBER),
+                        "meal_tier2":   types.Schema(type=types.Type.NUMBER),
+                        "meal_tier3":   types.Schema(type=types.Type.NUMBER),
+                        "travel_limit": types.Schema(type=types.Type.NUMBER),
+                        "hotel_limit":  types.Schema(type=types.Type.NUMBER),
+                    },
+                    required=["user_id", "set_by", "valid_from", "valid_until", "reason"],
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="clear_policy_override",
+                description="Clear an active policy override. Admin only.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={"user_id": types.Schema(type=types.Type.STRING)},
+                    required=["user_id"],
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_duplicate_receipts",
+                description="Find receipts with duplicate UTR numbers.",
+                parameters=types.Schema(type=types.Type.OBJECT, properties={}),
+            ),
+            types.FunctionDeclaration(
+                name="get_mismatch_breakdown",
+                description="Count frequency of mismatch tags.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={"user_id": types.Schema(type=types.Type.STRING)},
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="search_expenses_by_amount",
+                description="Search expenses by claimed amount range.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "min_amount": types.Schema(type=types.Type.NUMBER),
+                        "max_amount": types.Schema(type=types.Type.NUMBER),
+                        "user_id":    types.Schema(type=types.Type.STRING),
+                    },
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_chat_history",
+                description="Fetch recent chat messages.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "user_phone": types.Schema(type=types.Type.STRING),
+                        "limit":      types.Schema(type=types.Type.INTEGER),
+                    },
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_users",
+                description="List users with optional filters.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "role":         types.Schema(type=types.Type.STRING),
+                        "organization": types.Schema(type=types.Type.STRING),
+                        "team":         types.Schema(type=types.Type.STRING),
+                    },
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_flagged_expenses",
+                description="Fetch detailed flagged/mismatched expenses for auditing.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "user_id":        types.Schema(type=types.Type.STRING),
+                        "mismatch_type":  types.Schema(type=types.Type.STRING),
+                        "application_id": types.Schema(type=types.Type.STRING),
+                        "limit":          types.Schema(type=types.Type.INTEGER),
+                    },
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="get_expenses_detail",
+                description="Fetch expense records with comprehensive filters.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "user_id":        types.Schema(type=types.Type.STRING),
+                        "application_id": types.Schema(type=types.Type.STRING),
+                        "verified":       types.Schema(type=types.Type.BOOLEAN),
+                        "organization":   types.Schema(type=types.Type.STRING),
+                        "team":           types.Schema(type=types.Type.STRING),
+                        "limit":          types.Schema(type=types.Type.INTEGER),
+                    },
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="generate_dashboard",
+                description="Generate a visual dashboard. Returns [dashboard_id:uuid]Title.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "title":       types.Schema(type=types.Type.STRING),
+                        "charts_json": types.Schema(
+                            type=types.Type.STRING,
+                            description="JSON array of chart objects",
+                        ),
+                    },
+                    required=["title", "charts_json"],
+                ),
+            ),
+            types.FunctionDeclaration(
+                name="save_dashboard",
+                description="Persist a dashboard specification.",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "spec": types.Schema(
+                            type=types.Type.STRING,
+                            description="JSON string of dashboard spec",
+                        )
+                    },
+                    required=["spec"],
+                ),
+            ),
+        ]
+    )
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# System prompt
+# ─────────────────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """You are the Expify Voice Assistant for Fristine Infotech. Today: {date}.
+You provide data intelligence and cross-table data management for admins and employees.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VOICE RESPONSE RULES (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Reply in 1-3 short spoken sentences only.
+- NO markdown, bullets, or symbols. Say "rupees" not "₹".
+- Speak naturally and warmly. Round amounts to nearest rupee.
+- Even when performing complex tasks (like sending emails), keep the spoken reply brief (e.g., "I've sent that summary to Rahul.").
+- NO formatting like tables or code blocks in voice — explain the data instead.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+IDENTITY & RBAC
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The user's identity is cryptographically verified by Supabase auth.
+- If context shows role = "admin", you have full cross-user access to all tables.
+- If role = "employee", restrict ALL data queries to the requesting user's own data.
+  Exception: Aggregated team/org insights without exposing private details.
+- Context info provided in this session:
+  Admin/User ID: {admin_id}
+  Role: {role}
+  Organization: {organization}
+  Team: {team}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAIN RULES — ALWAYS FOLLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. NAME → UUID RULE:
+   For any person mentioned by name WITHOUT a [user_id:...] tag,
+   call resolve_user first. NEVER guess a UUID.
+
+2. COMPARISON RULE:
+   "compare X and Y" → resolve_user for each → compare_two_users.
+
+3. FLAGGED/MISMATCH DETAILS RULE:
+   Admin asks for flagged or problem expenses → call get_flagged_expenses.
+   get_mismatch_breakdown is ONLY for "how many of each type" counts.
+
+4. EXPENSE DRILL-DOWN RULE:
+   Admin asks for a specific person's expenses:
+   → resolve_user to get user_id
+   → get_expenses_detail with user_id and/or application_id
+
+5. USER LISTING RULE:
+   Admin asks to list users → call get_users directly.
+
+6. SEMANTIC SEARCH RULE:
+   Natural language expense searches → prefer semantic_search_expenses.
+
+7. TEAM & ORGANIZATION RULE:
+   When asked about "team expenses" or "org stats", look up the requesting 
+   user's organization/team first (if not in context) and use them as 
+   parameters in get_users, get_expenses_detail, or get_applications.
+
+8. DASHBOARDS (ZOHO ANALYTICS STYLE):
+   - Always fetch data first before calling generate_dashboard.
+   - For chart requests, return the EXACT [dashboard_id:uuid]Title string from the tool. 
+   - Colors: #6366F1 #8B5CF6 #F472B6 #34D399 #F59E0B #60A5FA #FB923C #A78BFA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXTERNAL TOOL RULES (GMAIL/SLACK)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- GMAIL_SEND_EMAIL: Always use a professional HTML <table> (with inline CSS) for data summaries.
+- SLACK_SEND_MESSAGE: Use the 'channel' (no #) and 'markdown_text' parameters.
+- GMAIL_FETCH_EMAILS: query, max_results only.
+- PROMPT RULE: When an email is sent, only say "I've sent that email to [Name]".
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+POLICY UPDATE FLOW (ADMIN ONLY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Identify the user (resolve_user or [user_id:uuid]).
+2. Gather: limits, values, dates, and reason.
+3. Speak a brief summary and ask for confirmation.
+4. Call set_policy_override only after receiving explicit confirmation.
+
+Meal limits: 900 rupees Tier 1, 700 Tier 2, 450 Tier 3 per day.
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FastAPI sub-app  (mounted at /voice by main.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from fastapi import FastAPI as _FastAPI, WebSocket as _WebSocket, WebSocketDisconnect as _WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware as _CORSMiddleware
+
+app = _FastAPI(title="Expify Voice Agent")
+
+app.add_middleware(
+    _CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "model": GEMINI_MODEL}
+
+
+@app.websocket("/ws/{session_id}")
+async def websocket_endpoint(ws: _WebSocket, session_id: str):
+    """
+    Bidirectional voice WebSocket  (follows Google ADK sample pattern).
+
+    Query params:
+        admin_id  – UUID of the authenticated admin
+
+    Client → Server:
+        Binary frame  : raw PCM audio  (16 kHz, 16-bit LE, mono)
+        Text frame    : JSON  {"type": "text", "data": "hello"}
+
+    Server → Client  (all JSON text frames):
+        {"type": "audio",          "data": "<base64 PCM 24 kHz>", "sampleRate": 24000}
+        {"type": "transcript_in",  "text": "..."}
+        {"type": "transcript_out", "text": "..."}
+        {"type": "tool_thinking",  "label": "..."}
+        {"type": "dashboard_ready","id": "uuid", "title": "..."}
+        {"type": "turn_complete"}
+        {"type": "error",          "message": "..."}
+    """
+    await ws.accept()
+    admin_id = ws.query_params.get("admin_id", "")
+    role = ws.query_params.get("role", "admin" if admin_id else "employee")
+    user_id = ws.query_params.get("user_id", admin_id)
+    org = ws.query_params.get("organization", "")
+    team = ws.query_params.get("team", "")
+
+    logger.info(f"[WS] Connected session={session_id} user_id={user_id!r} role={role!r}")
+
+    system_msg = SYSTEM_PROMPT.format(
+        date=datetime.now(timezone.utc).strftime("%B %Y"),
+        admin_id=user_id or "unknown",
+        role=role,
+        organization=org or "Fristine Infotech",
+        team=team or "Executive",
+    )
+
+    # ── Tool compilation ─────────────────────────────────────────────────────
+    all_decls = []
+    # 1. Add static tools from GEMINI_TOOLS
+    for t_obj in GEMINI_TOOLS:
+        if t_obj.function_declarations:
+            all_decls.extend(t_obj.function_declarations)
+            
+    # 2. Load dynamic tools if admin_id is present
+    dynamic_tools: Dict[str, SanitizedTool] = {}
+    if admin_id:
+        try:
+            logger.info(f"[WS] Loading dynamic tools for admin_id={admin_id}")
+            composio_tools = _load_composio_tools(admin_id)
+            if composio_tools:
+                dynamic_tools = {t.name: t for t in composio_tools}
+                logger.info(f"[WS] Found {len(composio_tools)} dynamic tools: {list(dynamic_tools.keys())}")
+                for t in composio_tools:
+                    decl = t._get_declaration()
+                    if decl:
+                        all_decls.append(decl)
+            else:
+                logger.warning(f"[WS] No dynamic tools loaded for admin_id={admin_id}")
+        except Exception as exc:
+            logger.exception(f"[WS] Failed to load dynamic tools: {exc}")
+
+    # 3. Create a single Tool with the combined declarations
+    total_tools = [types.Tool(function_declarations=all_decls)]
+    
+    if not admin_id:
+        # Prompt the model to explain why tools are restricted
+        system_msg += "\n\nCRITICAL: The current session is NOT authenticated with an Admin ID. External tools (Gmail, Slack) and Data retrieval are restricted. Explain this to the user if they ask for these features."
+        logger.warning(f"[WS] Starting session {session_id} WITHOUT admin_id. Tools available: {len(all_decls)}")
+    else:
+        logger.info(f"[WS] Starting session {session_id} with {len(all_decls)} tools for admin {admin_id}")
+
+    config = types.LiveConnectConfig(
+        response_modalities=["AUDIO"],
+        system_instruction=system_msg,
+        tools=total_tools,
+        output_audio_transcription=types.AudioTranscriptionConfig(),
+        input_audio_transcription=types.AudioTranscriptionConfig(),
+        speech_config=types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name="Charon"
+                )
+            )
+        ),
+        thinking_config=types.ThinkingConfig(thinking_level="minimal"),
+    )
+
+    try:
+        async with _genai_client.aio.live.connect(
+            model=GEMINI_MODEL, config=config
+        ) as session:
+            logger.info("[WS] Gemini Live session ready — waiting for user.")
+
+            # ── Upstream: client → Gemini ─────────────────────────────
+            _audio_chunk_count = 0
+
+            async def client_to_gemini():
+                nonlocal _audio_chunk_count
+                try:
+
+                    while True:
+                        message = await ws.receive()
+
+                        if "bytes" in message:
+                            _audio_chunk_count += 1
+                            if _audio_chunk_count <= 3 or _audio_chunk_count % 200 == 0:
+                                logger.info(
+                                    f"[WS] Received audio chunk #{_audio_chunk_count}: "
+                                    f"{len(message['bytes'])} bytes"
+                                )
+                            # Binary frame = raw PCM audio
+                            await session.send_realtime_input(
+                                audio=types.Blob(
+                                    data=message["bytes"],
+                                    mime_type=f"audio/pcm;rate={SEND_SAMPLE_RATE}",
+                                )
+                            )
+
+                        elif "text" in message:
+                            data = json.loads(message["text"])
+                            if data.get("type") == "text":
+                                logger.info(f"[WS] Received text: {data.get('data', '')[:80]}")
+                                await session.send_realtime_input(
+                                    text=data.get("data", "")
+                                )
+
+                except _WebSocketDisconnect:
+                    logger.info(f"[WS] Client disconnected: {session_id}")
+                except Exception as exc:
+                    logger.error(f"[WS] upstream error: {exc}")
+
+            # ── Downstream: Gemini → client ───────────────────────────
+            async def gemini_to_client(admin_id: str | None = None):
+                _event_count = 0
+                try:
+                    logger.info("[WS] gemini_to_client: starting receive loop")
+                    while True:
+                        async for response in session.receive():
+                            _event_count += 1
+                            if response is None:
+                                continue
+
+                            sc = getattr(response, "server_content", None)
+
+                            # ── Audio + text parts ────────────────────────
+                            if sc and sc.model_turn:
+                                for part in (sc.model_turn.parts or []):
+                                    # Audio bytes → base64 JSON
+                                    if part.inline_data and part.inline_data.data:
+                                        if _event_count <= 5 or _event_count % 50 == 0:
+                                            logger.info(f"[WS] Sending audio to client: {len(part.inline_data.data)} bytes")
+                                        await ws.send_json({
+                                            "type": "audio",
+                                            "data": base64.b64encode(
+                                                part.inline_data.data
+                                            ).decode(),
+                                            "sampleRate": RECEIVE_SAMPLE_RATE,
+                                        })
+                                    # Inline text (rare with AUDIO modality)
+                                    if part.text:
+                                        logger.info(f"[WS] Text from model: {part.text[:100]}")
+                                        await ws.send_json({
+                                            "type": "text_out",
+                                            "text": part.text,
+                                        })
+
+                            if sc:
+                                # Output transcription (assistant speech → text)
+                                ot = getattr(sc, "output_transcription", None)
+                                if ot and getattr(ot, "text", None):
+                                    text = ot.text.strip()
+                                    if text:
+                                        logger.info(f"[WS] Transcript out: {text[:80]}")
+                                        await ws.send_json({
+                                            "type": "transcript_out",
+                                            "text": text,
+                                        })
+
+                                # Input transcription (user speech → text)
+                                it = getattr(sc, "input_transcription", None)
+                                if it and getattr(it, "text", None):
+                                    text = it.text.strip()
+                                    if text:
+                                        logger.info(f"[WS] Transcript in: {text[:80]}")
+                                        await ws.send_json({
+                                            "type": "transcript_in",
+                                            "text": text,
+                                        })
+
+                                # Turn complete
+                                if getattr(sc, "turn_complete", False):
+                                    logger.info("[WS] Turn complete — waiting for next input")
+                                    await ws.send_json({"type": "turn_complete"})
+
+                            # ── Tool calls ────────────────────────────────
+                            if response.tool_call:
+                                await _handle_tool_call(session, response.tool_call, ws, dynamic_tools, admin_id=admin_id)
+
+                        # If the generator finishes naturally, wait a bit and restart
+                        # unless the session is closed.
+                        await asyncio.sleep(0.1)
+
+                except _WebSocketDisconnect:
+                    logger.info("[WS] gemini_to_client: client disconnected")
+                except Exception as exc:
+                    logger.error(f"[WS] downstream error: {exc}")
+                    traceback.print_exc()
+                    try:
+                        await ws.send_json({"type": "error", "message": str(exc)})
+                    except Exception:
+                        pass
+
+            # Run both directions concurrently
+            await asyncio.gather(client_to_gemini(), gemini_to_client(admin_id=admin_id))
+
+    except _WebSocketDisconnect:
+        logger.info(f"[WS] Client disconnected: {session_id}")
+    except Exception as exc:
+        logger.error(f"[WS] Session error: {exc}")
+        traceback.print_exc()
+
+    logger.info(f"[WS] Session ended: {session_id}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool call handler
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _handle_tool_call(session, tool_call, ws: _WebSocket, dynamic_tools: Dict[str, SanitizedTool] = None, admin_id: str | None = None) -> None:
+    """Execute tool calls and send results back to Gemini."""
+    if dynamic_tools is None:
+        dynamic_tools = {}
+        
+    function_calls = getattr(tool_call, "function_calls", []) or []
+    if not function_calls:
+        return
+
+    function_responses = []
+
+    for fc in function_calls:
+        call_id = getattr(fc, "id", "") or ""
+        name = getattr(fc, "name", "") or ""
+        args = dict(getattr(fc, "args", {}) or {})
+
+        try:
+            await ws.send_json({
+                "type": "tool_thinking",
+                "label": _thinking_label(name),
+            })
+        except Exception:
+            pass
+
+        logger.info(f"[Tool] {name} args={args}")
+
+        func = TOOL_MAP.get(name)
+        dtool = dynamic_tools.get(name)
+        
+        if func:
+            try:
+                result = await func(**args)
+            except Exception as exc:
+                logger.error(f"[Tool] {name} error: {exc}")
+                result = _err(str(exc))
+        elif dtool:
+            try:
+                logger.info(f"[Tool] Running dynamic {name}...")
+                # Composio/ADK tools need a ToolContext
+                # We provide a mock context that satisfies the constructor requirements
+                tctx = get_mock_tool_context(admin_id=admin_id)
+                result = await dtool.run_async(args=args, tool_context=tctx)
+                logger.info(f"[Tool] Dynamic {name} success!")
+            except Exception as exc:
+                logger.exception(f"[Tool] dynamic {name} error: {exc}")
+                result = _err(str(exc))
+        else:
+            logger.warning(f"[Tool] Unknown tool: {name}. Available dynamic tools: {list(dynamic_tools.keys())}")
+            result = _err(f"Unknown tool: {name}")
+
+        logger.info(f"[Tool] {name} → {len(result)} chars")
+
+        # Relay dashboard ID to frontend
+        result_str = str(result)
+        if name == "generate_dashboard" and "[dashboard_id:" in result_str:
+            match = re.search(r"\[dashboard_id:([^\]]+)\](.*)", result_str)
+            if match:
+                try:
+                    await ws.send_json({
+                        "type": "dashboard_ready",
+                        "id": match.group(1).strip(),
+                        "title": match.group(2).strip(),
+                    })
+                except Exception:
+                    pass
+
+        function_responses.append(
+            types.FunctionResponse(
+                name=call_id,
+                id=call_id,
+                response={"output": result},
+            )
+        )
+
+    await session.send_tool_response(function_responses=function_responses)
+

@@ -14,14 +14,16 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import requests as _requests
-from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from google.adk.agents import LlmAgent
+from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
 from composio import Composio
 from composio_google_adk import GoogleAdkProvider
+
+load_dotenv()
 
 from vision_agent import vision_router, vision_agent
 from input_refiner_agent import input_refiner_agent
@@ -39,11 +41,6 @@ except Exception as _voice_import_err:
     _voice_agent_available = False
     print(f"[Voice] Failed to load voice_agent: {_voice_import_err}", flush=True)
     traceback.print_exc()
-
-if hasattr(sys.stdout, "reconfigure") and sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-load_dotenv()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -64,127 +61,7 @@ def _get_auth_configs() -> Dict[str, str]:
     return {toolkit: os.getenv(env_key, "") for toolkit, env_key in mapping.items() if os.getenv(env_key, "")}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# COMPOSIO TOOL LOADER
-# Loads tools at AGENT CONSTRUCTION TIME — never in a callback.
-# Adding FunctionTool objects via llm_request.config.tools in a callback causes:
-#   PydanticSerializationError: Unable to serialize unknown type: FunctionTool
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _load_composio_tools(admin_user_id: str) -> list:
-    """
-    Load Composio tools for a specific admin.
-    Returns a plain list of ADK-compatible tools, or [] on any error.
-    """
-    key = os.getenv("COMPOSIO_API_KEY", "")
-    if not key or key == "your_composio_api_key":
-        print("[Composio] COMPOSIO_API_KEY not set — skipping tool load")
-        return []
-
-    try:
-        # Step 1: find which toolkits this admin has active connections for
-        mgmt = Composio(api_key=key)
-        response = mgmt.connected_accounts.list(user_ids=[admin_user_id])
-
-        active_toolkits: List[str] = []
-        for c in response.items:
-            status = getattr(c, "status", "").upper()
-            if status == "ACTIVE":
-                tk = getattr(c, "toolkit", None)
-                slug = getattr(tk, "slug", None) if tk else None
-                if slug:
-                    active_toolkits.append(slug.upper())  # e.g. "GMAIL"
-
-        print(f"[Composio] Active toolkits for admin={admin_user_id}: {active_toolkits}")
-
-        if not active_toolkits:
-            return []
-
-        # Step 2: load tools using official v3 pattern
-        from google.adk.tools import BaseTool, ToolContext
-        from google.genai import types
-        from typing_extensions import override
-
-        class SanitizedTool(BaseTool):
-            """Gemini doesn't support 'any_of' or 'additional_properties' in tool schemas."""
-            def __init__(self, original_tool):
-                super().__init__(name=original_tool.name, description=original_tool.description)
-                self._original = original_tool
-
-            @override
-            def _get_declaration(self) -> Optional[types.FunctionDeclaration]:
-                decl = self._original._get_declaration()
-                if decl and decl.parameters:
-                    decl_dict = decl.model_dump(exclude_none=True)
-                    self._sanitize_schema(decl_dict.get("parameters", {}))
-                    return types.FunctionDeclaration.model_validate(decl_dict)
-                return decl
-
-            def _sanitize_schema(self, schema: dict):
-                if not isinstance(schema, dict): return
-                
-                # SLACK_SEND_MESSAGE specific: strip the noise to avoid Gemini confusion
-                if self.name == "SLACK_SEND_MESSAGE":
-                    props = schema.get("properties", {})
-                    # For this tool, we only want the bare essentials
-                    # Note: Composio's Slack tool has 'text' as deprecated, 'markdown_text' as preferred.
-                    # We keep both to be safe, plus 'channel'.
-                    essentials = {"channel", "text", "markdown_text"}
-                    schema["properties"] = {k: v for k, v in props.items() if k in essentials}
-                    if "required" in schema:
-                        schema["required"] = [r for r in schema["required"] if r in essentials]
-
-                if "any_of" in schema:
-                    options = schema.pop("any_of")
-                    if options and isinstance(options, list):
-                        schema.update(options[0])
-                schema.pop("additional_properties", None)
-                props = schema.get("properties", {})
-                if isinstance(props, dict):
-                    for p in props.values(): self._sanitize_schema(p)
-                items = schema.get("items")
-                if isinstance(items, dict): self._sanitize_schema(items)
-
-            @override
-            async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
-                # The original tool (FunctionTool) may have mandatory arguments in its signature
-                # that we've stripped from the schema for Gemini compatibility.
-                # We inject None for missing mandatory args to satisfy internal library checks.
-                if hasattr(self._original, "_get_mandatory_args"):
-                    mandatory = self._original._get_mandatory_args()
-                    for m in mandatory:
-                        if m not in args:
-                            args[m] = None
-                return await self._original.run_async(args=args, tool_context=tool_context)
-
-        composio = Composio(api_key=key, provider=GoogleAdkProvider())
-
-        # ── Fetch by specific tool slugs you always want ──────────────────
-        PRIORITY_TOOLS = [
-            "GMAIL_SEND_EMAIL", "GMAIL_FETCH_EMAILS", "GMAIL_GET_PROFILE",
-            "GMAIL_CREATE_EMAIL_DRAFT", "GMAIL_SEND_DRAFT", "GMAIL_REPLY_TO_THREAD",
-            "SLACK_SEND_MESSAGE", "SLACK_LIST_CHANNELS", "SLACK_GET_CHANNEL_MESSAGES",
-            "GOOGLESHEETS_CREATE_GOOGLE_SHEET", "GOOGLESHEETS_SHEET_FROM_JSON",
-            "GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_LIST_EVENTS",
-        ]
-
-        active_prefixes = tuple(tk.upper() + "_" for tk in active_toolkits)
-        wanted_tools = [s for s in PRIORITY_TOOLS if s.startswith(active_prefixes)]
-
-        if wanted_tools:
-            tool_collection = composio.tools.get(user_id=admin_user_id, tools=wanted_tools)
-        else:
-            tool_collection = composio.tools.get(user_id=admin_user_id, toolkits=active_toolkits)
-
-        tools = list(tool_collection) if hasattr(tool_collection, "__iter__") else []
-        sanitized = [SanitizedTool(t) for t in tools]
-        print(f"[Composio] Loaded {len(sanitized)} sanitized tools: {[t.name for t in sanitized]}")
-        return sanitized
-
-    except Exception as exc:
-        print(f"[Composio] Failed to load tools for admin={admin_user_id}: {exc}")
-        traceback.print_exc()
-        return []
+from tool_utils import SanitizedTool, _load_composio_tools
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -318,13 +195,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Fristine Infotech — Expense Agent Server", lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AGENT ENDPOINTS
@@ -342,6 +212,21 @@ add_adk_fastapi_endpoint(app, adk_refiner_agent,  path="/refine/")
 add_adk_fastapi_endpoint(app, adk_audit_agent,    path="/audit/")
 add_adk_fastapi_endpoint(app, adk_chatbot_agent,  path="/chatbot_agent/")
 add_adk_fastapi_endpoint(app, adk_vision_agent,   path="/vision-agent/")
+
+if _voice_agent_available:
+    print("[Main] Mounting voice_agent.app at /voice...", flush=True)
+    app.mount("/voice", _voice_agent.app)
+    print("[Main] ✓ voice_agent.app mounted", flush=True)
+
+# CORS must be added AFTER add_adk_fastapi_endpoint calls so it becomes the
+# outermost middleware layer and handles OPTIONS preflight before any inner
+# middleware or route sees it.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ─────────────────────────────────────────────────────────────────────────
 # DEBUG: Print all registered routes
@@ -439,57 +324,7 @@ async def log_requests(request: Request, call_next):
 # VOICE ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/voice/debug")
-async def voice_debug():
-    return {
-        "voice_agent_available": _voice_agent_available,
-        "active_connections": list(_voice_agent._connections.keys()) if _voice_agent_available else [],
-    }
-
-
-"""
-PATCH for main.py — replace ONLY the /voice/offer endpoint (around line 435).
-Everything else in main.py is unchanged.
-
-Change: extract admin_id from the request body and pass it to handle_offer()
-so the voice pipeline can forward it to the enterprise agent HTTP call.
-"""
-
-@app.post("/voice/offer")
-async def voice_offer(request: Request):
-    if not _voice_agent_available:
-        return JSONResponse({"error": "Voice agent unavailable."}, status_code=503)
-    try:
-        body = await request.json()
-
-        # Ensure admin_id is present.
-        # Frontend sends: {"sdp": "…", "type": "offer", "admin_id": "<uuid>"}
-        # Fallback: read from state dict (same pattern as enterprise_agent_endpoint).
-        if not body.get("admin_id"):
-            state = body.get("state") or {}
-            if isinstance(state, dict):
-                aid = state.get("admin_user_id") or state.get("user_id") or ""
-                if aid:
-                    body["admin_id"] = aid
-
-        print(f"[Voice] Received admin_id: {body.get('admin_id')!r}")
-        answer = await _voice_agent.handle_offer(body)
-        return JSONResponse(answer)
-    except Exception as exc:
-        traceback.print_exc()
-        return JSONResponse({"error": str(exc)}, status_code=500)
-
-
-@app.post("/voice/ice")
-async def voice_ice(request: Request):
-    if not _voice_agent_available:
-        return JSONResponse({"error": "Voice agent unavailable."}, status_code=503)
-    try:
-        body = await request.json()
-        await _voice_agent.handle_ice(body)
-        return JSONResponse({"ok": True})
-    except Exception as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
+# voice_agent is now mounted at /voice. WebSocket: /voice/ws/{session_id}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -19,21 +19,16 @@ function tryParseDashboard(content: string): DashboardSpec | null {
     if (parsed?.type === "dashboard" && Array.isArray(parsed.charts)) {
       return parsed as DashboardSpec;
     }
-  } catch {
-    // not valid JSON dashboard
-  }
+  } catch { /* not valid JSON dashboard */ }
   return null;
 }
+
 function extractDashboardLinks(content: string): { id: string; title: string; raw: string }[] {
   const regex = /\[dashboard_id:([^\]]+)\]([^[\n\r]*)/g;
   const links: { id: string; title: string; raw: string }[] = [];
   let match;
   while ((match = regex.exec(content)) !== null) {
-    links.push({
-      id: match[1],
-      title: match[2].trim() || "Dashboard",
-      raw: match[0]
-    });
+    links.push({ id: match[1], title: match[2].trim() || "Dashboard", raw: match[0] });
   }
   return links;
 }
@@ -41,20 +36,11 @@ function extractDashboardLinks(content: string): { id: string; title: string; ra
 export default function MessageBubble({ msg, idx }: MessageBubbleProps) {
   const dashboardSpec = msg.role === "assistant" ? tryParseDashboard(msg.content) : null;
   const dashboardLinks = msg.role === "assistant" ? extractDashboardLinks(msg.content) : [];
-  
-  // Clean up content for markdown: remove the [dashboard_id:...] triggers
+
   let cleanContent = msg.content;
   if (dashboardLinks.length > 0) {
-    dashboardLinks.forEach(link => {
-      cleanContent = cleanContent.replace(link.raw, "");
-    });
+    dashboardLinks.forEach(link => { cleanContent = cleanContent.replace(link.raw, ""); });
     cleanContent = cleanContent.trim();
-  }
-
-  if (msg.role === "assistant" && (dashboardSpec || dashboardLinks.length > 0)) {
-     console.log("[DEBUG] MessageBubble assistant content:", msg.content);
-     console.log("[DEBUG] dashboardSpec:", !!dashboardSpec);
-     console.log("[DEBUG] dashboardLinks count:", dashboardLinks.length);
   }
 
   return (
@@ -63,88 +49,132 @@ export default function MessageBubble({ msg, idx }: MessageBubbleProps) {
       style={{
         display: "flex",
         flexDirection: msg.role === "user" ? "row-reverse" : "row",
-        gap: "14px", alignItems: "flex-start",
-        marginBottom: "26px",
+        gap: "12px",
+        alignItems: "flex-start",
+        marginBottom: "24px",
         width: "100%",
-        animationDelay: `${Math.min(idx, 6) * 0.05}s`,
+        animationDelay: `${Math.min(idx, 6) * 0.04}s`,
+        fontFamily: "var(--font-sans, 'Geist', sans-serif)",
       }}
     >
       {/* Avatar */}
       {msg.role === "assistant" ? (
         <div style={{
-          width: "32px", height: "32px", borderRadius: "50%",
+          width: "28px",
+          height: "28px",
+          borderRadius: "7px",
           flexShrink: 0,
-          background: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.09)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginTop: "2px",
         }}>
-          <Sparkles size={14} color="rgba(255,255,255,0.7)" />
+          <Sparkles size={13} color="rgba(255,255,255,0.6)" strokeWidth={1.5} />
         </div>
       ) : (
-        <div style={{ position: "relative", flexShrink: 0 }}>
+        <div style={{ position: "relative", flexShrink: 0, marginTop: "2px" }}>
           <div style={{
-            width: "32px", height: "32px", borderRadius: "50%",
-            background: "rgba(255,255,255,0.1)",
-            border: "1px solid rgba(255,255,255,0.16)",
-            display: "flex", alignItems: "center", justifyContent: "center",
+            width: "28px",
+            height: "28px",
+            borderRadius: "7px",
+            background: "rgba(255,255,255,0.07)",
+            border: "1px solid rgba(255,255,255,0.11)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}>
-            <User size={15} color="rgba(255,255,255,0.8)" />
+            <User size={13} color="rgba(255,255,255,0.65)" strokeWidth={1.5} />
           </div>
-          {/* Mic badge for voice messages */}
           {msg.isVoice && (
             <div style={{
-              position: "absolute", bottom: "-3px", right: "-3px",
-              width: "15px", height: "15px", borderRadius: "50%",
-              background: "#34D399",
-              border: "2px solid #0c0c14",
-              display: "flex", alignItems: "center", justifyContent: "center",
+              position: "absolute",
+              bottom: "-2px",
+              right: "-2px",
+              width: "12px",
+              height: "12px",
+              borderRadius: "50%",
+              background: "#22c55e",
+              border: "2px solid #0a0a0a",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}>
-              <Mic size={7} color="white" strokeWidth={2.5} />
+              <Mic size={6} color="white" strokeWidth={2.5} />
             </div>
           )}
         </div>
       )}
 
       <div style={{
-        flex: 1, display: "flex", flexDirection: "column", gap: "5px",
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        gap: "4px",
         alignItems: msg.role === "user" ? "flex-end" : "flex-start",
-        maxWidth: "82%",
+        maxWidth: "80%",
       }}>
+        {/* Label */}
         <span style={{
-          fontSize: "10.5px", fontWeight: 600,
-          color: "rgba(255,255,255,0.24)",
-          marginBottom: "2px", letterSpacing: "0.03em",
-          display: "flex", alignItems: "center", gap: "5px",
+          fontSize: "10px",
+          fontWeight: 500,
+          color: "rgba(255,255,255,0.20)",
+          marginBottom: "1px",
+          letterSpacing: "0.04em",
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          textTransform: "uppercase",
         }}>
           {msg.role === "user" ? "You" : "Expify AI"}
           {msg.isVoice && (
             <span style={{
-              fontSize: "9px", color: "#34D399",
-              background: "rgba(52,211,153,0.08)",
-              border: "1px solid rgba(52,211,153,0.2)",
-              borderRadius: "8px", padding: "1px 5px",
-              display: "inline-flex", alignItems: "center", gap: "3px",
+              fontSize: "8.5px",
+              color: "#22c55e",
+              background: "rgba(34,197,94,0.07)",
+              border: "1px solid rgba(34,197,94,0.15)",
+              borderRadius: "6px",
+              padding: "1px 5px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "2px",
               fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
             }}>
-              <Mic size={7} /> voice
+              <Mic size={6} /> voice
             </span>
           )}
         </span>
 
-        {/* Files */}
+        {/* Attached files */}
         {msg.files && msg.files.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "2px" }}>
             {msg.files.map((f, i) => (
               <div key={i} style={{
-                display: "flex", alignItems: "center", gap: "6px",
-                padding: "6px 10px", background: "rgba(255,255,255,0.04)",
-                borderRadius: "9px", border: "1px solid rgba(255,255,255,0.07)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "5px 9px",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: "8px",
+                border: "1px solid rgba(255,255,255,0.06)",
               }}>
                 {f.type === "image" && f.url
-                  ? <img src={f.url} alt={f.name} style={{ width: "48px", height: "48px", objectFit: "cover", borderRadius: "5px" }} />
-                  : <FileText size={14} color="rgba(255,255,255,0.5)" />
+                  ? <img src={f.url} alt={f.name} style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "5px" }} />
+                  : <FileText size={13} color="rgba(255,255,255,0.35)" />
                 }
-                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.38)", maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                <span style={{
+                  fontSize: "11px",
+                  color: "rgba(255,255,255,0.35)",
+                  maxWidth: "90px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}>
+                  {f.name}
+                </span>
               </div>
             ))}
           </div>
@@ -154,21 +184,22 @@ export default function MessageBubble({ msg, idx }: MessageBubbleProps) {
         {msg.role === "user" ? (
           msg.content && (
             <div className="aib-user-bubble" style={{
-              padding: "11px 17px", borderRadius: "18px 18px 4px 18px",
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              fontSize: "14px", lineHeight: 1.65,
-              color: "rgba(255,255,255,0.88)",
+              padding: "10px 15px",
+              borderRadius: "14px 14px 4px 14px",
+              background: "rgba(255,255,255,0.07)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              fontSize: "13.5px",
+              lineHeight: 1.65,
+              color: "rgba(255,255,255,0.85)",
+              fontFamily: "var(--font-sans, 'Geist', sans-serif)",
             }}>
               {msg.content}
             </div>
           )
         ) : dashboardSpec ? (
-          /* Dashboard rendered inline */
           <DashboardRenderer spec={dashboardSpec} />
         ) : (dashboardLinks.length > 0 || cleanContent) ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {/* Render any detected dashboard buttons */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {dashboardLinks.map((link, i) => (
               <Link
                 key={i}
@@ -178,75 +209,80 @@ export default function MessageBubble({ msg, idx }: MessageBubbleProps) {
                   display: "flex",
                   alignItems: "center",
                   gap: "10px",
-                  padding: "12px 18px",
-                  background: "linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))",
-                  border: "1px solid rgba(139,92,246,0.3)",
-                  borderRadius: "14px",
+                  padding: "11px 15px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.09)",
+                  borderRadius: "12px",
                   textDecoration: "none",
                   color: "white",
-                  transition: "transform 0.2s, background 0.2s",
+                  transition: "all 0.15s",
                   cursor: "pointer",
                   width: "fit-content",
-                  minWidth: "200px"
+                  minWidth: "200px",
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.25))";
-                  e.currentTarget.style.transform = "scale(1.02)";
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.07)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)";
                 }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))";
-                  e.currentTarget.style.transform = "scale(1)";
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)";
                 }}
               >
                 <div style={{
-                  width: "36px", height: "36px", borderRadius: "10px",
-                  background: "rgba(139,92,246,0.2)",
-                  display: "flex", alignItems: "center", justifyContent: "center"
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "rgba(255,255,255,0.07)",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
                 }}>
-                  <ExternalLink size={18} color="#A78BFA" />
+                  <ExternalLink size={15} color="rgba(255,255,255,0.6)" />
                 </div>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ fontSize: "14px", fontWeight: 600, color: "#DDD" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.8)" }}>
                     {link.title}
                   </span>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
-                    Click here to view dashboard
+                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>
+                    View dashboard
                   </span>
                 </div>
               </Link>
             ))}
 
-            {/* Render remaining text content */}
             {cleanContent && (
-              <div style={{
-                fontSize: "14.5px", lineHeight: 1.78,
-                color: "rgba(255,255,255,0.8)",
-              }} className="expify-md">
+              <div
+                className="expify-md"
+                style={{ fontSize: "13.5px", lineHeight: 1.75, color: "rgba(255,255,255,0.72)" }}
+              >
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
-                     h1: (props) => <h1 style={{ fontSize: "1.25rem", margin: "12px 0 8px", color: "rgba(255,255,255,0.95)", fontWeight: 700 }} {...props} />,
-                     h2: (props) => <h2 style={{ fontSize: "1.15rem", margin: "10px 0 6px", color: "rgba(255,255,255,0.9)", fontWeight: 700 }} {...props} />,
-                     h3: (props) => <h3 style={{ fontSize: "1.05rem", margin: "8px 0 4px", color: "rgba(255,255,255,0.85)", fontWeight: 600 }} {...props} />,
-                     h4: (props) => <h4 style={{ fontSize: "1rem", margin: "6px 0 3px", color: "rgba(255,255,255,0.8)" }} {...props} />,
-                     h5: (props) => <h5 style={{ fontSize: "0.95rem", margin: "4px 0 2px", color: "rgba(255,255,255,0.75)" }} {...props} />,
-                     h6: (props) => <h6 style={{ fontSize: "0.9rem", margin: "2px 0 1px", color: "rgba(255,255,255,0.7)" }} {...props} />,
-                     a: (props) => <a style={{ color: "rgba(255,255,255,0.9)", textDecoration: "underline", textUnderlineOffset: "3px", wordBreak: "break-all" }} target="_blank" rel="noopener noreferrer" {...props} />,
-                     hr: (props) => <hr style={{ border: "none", borderTop: "1px solid rgba(255,255,255,0.1)", margin: "14px 0" }} {...props} />,
+                    h1: (props) => <h1 style={{ fontSize: "1.2rem", margin: "12px 0 6px", color: "rgba(255,255,255,0.92)", fontWeight: 600, letterSpacing: "-0.02em" }} {...props} />,
+                    h2: (props) => <h2 style={{ fontSize: "1.1rem", margin: "10px 0 5px", color: "rgba(255,255,255,0.88)", fontWeight: 600 }} {...props} />,
+                    h3: (props) => <h3 style={{ fontSize: "1rem", margin: "8px 0 4px", color: "rgba(255,255,255,0.82)", fontWeight: 600 }} {...props} />,
+                    h4: (props) => <h4 style={{ fontSize: "0.95rem", margin: "6px 0 3px", color: "rgba(255,255,255,0.78)" }} {...props} />,
+                    h5: (props) => <h5 style={{ fontSize: "0.9rem", margin: "4px 0 2px", color: "rgba(255,255,255,0.72)" }} {...props} />,
+                    h6: (props) => <h6 style={{ fontSize: "0.85rem", margin: "2px 0 1px", color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.06em" }} {...props} />,
+                    a: (props) => <a style={{ color: "rgba(255,255,255,0.85)", textDecoration: "underline", textUnderlineOffset: "3px", textDecorationColor: "rgba(255,255,255,0.25)" }} target="_blank" rel="noopener noreferrer" {...props} />,
+                    hr: (props) => <hr style={{ border: "none", borderTop: "1px solid rgba(255,255,255,0.07)", margin: "14px 0" }} {...props} />,
                     table: (props) => (
-                      <div style={{ overflowX: "auto", margin: "12px 0", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "13px" }} {...props} />
+                      <div style={{ overflowX: "auto", margin: "10px 0", borderRadius: "9px", border: "1px solid rgba(255,255,255,0.07)" }}>
+                        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }} {...props} />
                       </div>
                     ),
-                    thead: (props) => <thead style={{ background: "rgba(255,255,255,0.04)" }} {...props} />,
-                    th: (props) => <th style={{ padding: "8px 13px", borderBottom: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.85)", fontWeight: 600, whiteSpace: "nowrap", fontFamily: "'Sora', sans-serif" }} {...props} />,
-                    td: (props) => <td style={{ padding: "7px 13px", borderBottom: "1px solid rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.65)", whiteSpace: "nowrap", fontFamily: "'Sora', sans-serif" }} {...props} />,
-                    p: (props) => <p style={{ margin: "4px 0" }} {...props} />,
-                    strong: (props) => <strong style={{ color: "rgba(255,255,255,0.95)", fontWeight: 700 }} {...props} />,
-                    ul: (props) => <ul style={{ paddingLeft: "18px", margin: "6px 0" }} {...props} />,
-                    li: (props) => <li style={{ margin: "4px 0" }} {...props} />,
-                    code: (props) => <code style={{ background: "rgba(255,255,255,0.07)", borderRadius: "5px", padding: "1px 6px", fontSize: "12.5px", fontFamily: "'JetBrains Mono', monospace", color: "rgba(255,255,255,0.75)" }} {...props} />,
-                    pre: (props) => <pre style={{ background: "rgba(255,255,255,0.04)", borderRadius: "10px", padding: "12px 16px", overflow: "auto", border: "1px solid rgba(255,255,255,0.07)" }} {...props} />,
+                    thead: (props) => <thead style={{ background: "rgba(255,255,255,0.03)" }} {...props} />,
+                    th: (props) => <th style={{ padding: "7px 12px", borderBottom: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.75)", fontWeight: 600, whiteSpace: "nowrap", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em" }} {...props} />,
+                    td: (props) => <td style={{ padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }} {...props} />,
+                    p: (props) => <p style={{ margin: "4px 0", color: "rgba(255,255,255,0.72)" }} {...props} />,
+                    strong: (props) => <strong style={{ color: "rgba(255,255,255,0.92)", fontWeight: 600 }} {...props} />,
+                    ul: (props) => <ul style={{ paddingLeft: "16px", margin: "5px 0" }} {...props} />,
+                    li: (props) => <li style={{ margin: "3px 0", color: "rgba(255,255,255,0.65)" }} {...props} />,
+                    code: (props) => <code style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px", padding: "1px 5px", fontSize: "12px", fontFamily: "var(--font-mono, 'Geist Mono', monospace)", color: "rgba(255,255,255,0.72)" }} {...props} />,
+                    pre: (props) => <pre style={{ background: "rgba(255,255,255,0.03)", borderRadius: "9px", padding: "12px 15px", overflow: "auto", border: "1px solid rgba(255,255,255,0.06)", margin: "8px 0" }} {...props} />,
                   }}
                 >
                   {cleanContent}
@@ -255,32 +291,43 @@ export default function MessageBubble({ msg, idx }: MessageBubbleProps) {
             )}
           </div>
         ) : (
-          /* Loading dots */
+          /* Loading state */
           <div style={{
-            padding: "14px 18px", borderRadius: "18px 18px 18px 4px",
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.07)",
-            display: "flex", flexDirection: "column", gap: "8px",
-            minWidth: "160px",
+            padding: "12px 16px",
+            borderRadius: "14px 14px 14px 4px",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            minWidth: "140px",
           }}>
             <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
-              {[0, 150, 300].map(d => (
+              {[0, 140, 280].map(d => (
                 <span key={d} className="dot-bounce" style={{
-                  width: "7px", height: "7px", borderRadius: "50%",
-                  background: "rgba(255,255,255,0.4)",
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "rgba(255,255,255,0.35)",
                   display: "inline-block",
                   animationDelay: `${d}ms`,
                   flexShrink: 0,
                 }} />
               ))}
             </div>
-            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", fontWeight: 500 }}>
-              Expify AI is thinking...
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>
+              Thinking…
             </span>
           </div>
         )}
 
-        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.12)", letterSpacing: "0.02em" }}>
+        {/* Timestamp */}
+        <span style={{
+          fontSize: "9.5px",
+          color: "rgba(255,255,255,0.14)",
+          letterSpacing: "0.02em",
+          marginTop: "1px",
+        }}>
           {new Date(msg.timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>

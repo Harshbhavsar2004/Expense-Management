@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { X, MicOff, Mic, Bot, Clock, Volume2, Wifi, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { DashboardSpec } from "@/types";
 
-const AGENT = "http://localhost:8000";
+const AGENT = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type SessionState = "idle" | "connecting" | "connected" | "error";
 
 interface VoiceMsg {
@@ -17,143 +17,274 @@ interface VoiceMsg {
 }
 
 interface Props {
-  adminId?: string;  // current admin UUID — forwarded so enterprise agent loads Composio tools
+  adminId?: string;
   onVoiceMessage?: (msg: VoiceMsg) => void;
   onDashboard?: (spec: DashboardSpec) => void;
   onVoiceDashboardId?: (id: string, title: string) => void;
 }
 
+// ── AudioWorklet processor source (inline to avoid external .js files) ────
+const PCM_RECORDER_PROCESSOR = `
+class PCMRecorderProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0]?.[0];
+    if (ch) {
+      const pcm16 = new Int16Array(ch.length);
+      for (let i = 0; i < ch.length; i++) {
+        pcm16[i] = Math.max(-1, Math.min(1, ch[i])) * 0x7fff;
+      }
+      this.port.postMessage(pcm16.buffer, [pcm16.buffer]);
+    }
+    return true;
+  }
+}
+registerProcessor("pcm-recorder", PCMRecorderProcessor);
+`;
+
 export default function VoiceAgentPanel({ adminId, onVoiceMessage, onDashboard, onVoiceDashboardId }: Props) {
-  const [sessionState,  setSessionState]  = useState<SessionState>("idle");
-  const [isMuted,       setIsMuted]       = useState(false);
-  const [errorMsg,      setErrorMsg]      = useState("");
+  const [sessionState, setSessionState] = useState<SessionState>("idle");
+  const [isMuted, setIsMuted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [thinkingLabel, setThinkingLabel] = useState<string | null>(null);
 
-  const pcRef     = useRef<RTCPeerConnection | null>(null);
-  const audioRef  = useRef<HTMLAudioElement | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const pcIdRef   = useRef<string | null>(null);
-  const bars      = Array.from({ length: 5 });
+  const recCtxRef = useRef<AudioContext | null>(null);
+  const playCtxRef = useRef<AudioContext | null>(null);
+  const nextPlayRef = useRef<number>(0);
+  const bars = Array.from({ length: 5 });
 
   useEffect(() => { return () => cleanup(); }, []);
 
-  const cleanup = () => {
+  useEffect(() => {
+    if (adminId) localStorage.setItem("expify_admin_user_id", adminId);
+  }, [adminId]);
+
+  const cleanup = useCallback(() => {
+    // Stop mic
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
-    pcRef.current?.close();
-    pcRef.current = null;
-    pcIdRef.current = null;
-    if (audioRef.current) { audioRef.current.srcObject = null; audioRef.current = null; }
+    // Close recorder AudioContext
+    if (recCtxRef.current?.state !== "closed") recCtxRef.current?.close().catch(() => {});
+    recCtxRef.current = null;
+    // Close player AudioContext
+    if (playCtxRef.current?.state !== "closed") playCtxRef.current?.close().catch(() => {});
+    playCtxRef.current = null;
+    nextPlayRef.current = 0;
+    // Close WebSocket
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     setThinkingLabel(null);
-  };
+  }, []);
 
+  // ── Decode base64 PCM and schedule gapless playback ──────────────────────
+  const playAudio = useCallback((b64: string, sampleRate: number) => {
+    const ctx = playCtxRef.current;
+    if (!ctx || ctx.state === "closed") return;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const raw = atob(b64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const view = new DataView(bytes.buffer);
+    const numSamples = bytes.length / 2;
+    const float32 = new Float32Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+      float32[i] = view.getInt16(i * 2, true) / 32768;
+    }
+    const buf = ctx.createBuffer(1, numSamples, sampleRate);
+    buf.copyToChannel(float32, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    const now = ctx.currentTime;
+    const start = Math.max(now, nextPlayRef.current);
+    src.start(start);
+    nextPlayRef.current = start + buf.duration;
+  }, []);
+
+  // ── Handle incoming WebSocket messages ───────────────────────────────────
+  const onWsMessage = useCallback((ev: MessageEvent) => {
+    try {
+      const msg = JSON.parse(ev.data) as {
+        type: string; text?: string; data?: string; sampleRate?: number;
+        id?: string; title?: string; label?: string; status?: string;
+        message?: string; spec?: DashboardSpec;
+        is_chunk?: boolean; is_final?: boolean;
+      };
+
+      switch (msg.type) {
+        case "audio":
+          if (msg.data) playAudio(msg.data, msg.sampleRate || 24000);
+          break;
+
+        case "transcript_in":
+          if (msg.text) onVoiceMessage?.({ role: "user", content: msg.text, isVoice: true });
+          break;
+
+        case "transcript_out":
+          if (msg.text) onVoiceMessage?.({
+            role: "assistant", content: msg.text, isVoice: true,
+            is_chunk: true, is_final: false,
+          });
+          break;
+
+        case "text_out":
+          if (msg.text) onVoiceMessage?.({
+            role: "assistant", content: msg.text, isVoice: true,
+            is_chunk: true, is_final: false,
+          });
+          break;
+
+        case "tool_thinking":
+          setThinkingLabel(msg.label ?? "Thinking…");
+          break;
+
+        case "turn_complete":
+          setThinkingLabel(null);
+          onVoiceMessage?.({ role: "assistant", content: "", isVoice: true, is_final: true });
+          break;
+
+        case "dashboard_ready":
+          if (msg.id) onVoiceDashboardId?.(msg.id, msg.title || "Dashboard");
+          break;
+
+        case "error":
+          console.error("[Voice WS]", msg.message);
+          break;
+      }
+    } catch { /* ignore malformed */ }
+  }, [playAudio, onVoiceMessage, onVoiceDashboardId]);
+
+  // ── Start session ───────────────────────────────────────────────────────
   const handleStart = async () => {
     setSessionState("connecting");
     setErrorMsg("");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      // 1. Get microphone
+      console.log("[Voice] Requesting microphone...");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 }, video: false });
       streamRef.current = stream;
+      console.log("[Voice] Microphone acquired:", stream.getAudioTracks()[0]?.label);
 
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-      pcRef.current = pc;
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      // 2. Create playback AudioContext (24 kHz for Gemini output)
+      playCtxRef.current = new AudioContext({ sampleRate: 24000 });
+      nextPlayRef.current = 0;
+      console.log("[Voice] Playback AudioContext created, sampleRate:", playCtxRef.current.sampleRate);
 
-      pc.ontrack = (e) => {
-        if (!audioRef.current) { audioRef.current = new Audio(); audioRef.current.autoplay = true; }
-        audioRef.current.srcObject = e.streams[0];
+      // 3. Create recording AudioContext (16 kHz for Gemini input)
+      const recCtx = new AudioContext({ sampleRate: 16000 });
+      recCtxRef.current = recCtx;
+      console.log("[Voice] Recording AudioContext created, sampleRate:", recCtx.sampleRate);
+
+      // 4. Resolve admin ID
+      let finalAdminId = adminId || "";
+      if (!finalAdminId) {
+        finalAdminId = localStorage.getItem("expify_admin_user_id") || "";
+      }
+      if (!finalAdminId) {
+        console.log("[Voice] adminId prop and localStorage empty, fetching from Supabase...");
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) finalAdminId = user.id;
+      }
+      
+      if (finalAdminId) {
+        localStorage.setItem("expify_admin_user_id", finalAdminId);
+      }
+      
+      console.log("[Voice] Resolved finalAdminId:", finalAdminId);
+
+      if (!finalAdminId) {
+        throw new Error("User identity not found. Please log in again.");
+      }
+
+      // 5. Open WebSocket FIRST (so it's ready when audio starts flowing)
+      const sessionId = crypto.randomUUID();
+      const wsUrl = `${AGENT.replace(/^http/, "ws")}/voice/ws/${sessionId}?admin_id=${encodeURIComponent(finalAdminId)}`;
+      console.log("[Voice] Connecting WebSocket:", wsUrl);
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = () => {
+        console.log("[Voice] WebSocket connected!");
+        setSessionState("connected");
+      };
+      ws.onmessage = onWsMessage;
+      ws.onclose = (ev) => {
+        console.log("[Voice] WebSocket closed:", ev.code, ev.reason);
+        setSessionState("idle");
+        setIsMuted(false);
+        cleanup();
+      };
+      ws.onerror = (ev) => {
+        console.error("[Voice] WebSocket error:", ev);
+        setErrorMsg("WebSocket connection failed.");
+        setSessionState("error");
+        cleanup();
       };
 
-      pc.ondatachannel = (e) => {
-        const ch = e.channel;
-        ch.onmessage = (ev) => {
-          try {
-            const msg = JSON.parse(ev.data) as {
-              type: string; text?: string; spec?: DashboardSpec;
-              id?: string; title?: string; is_chunk?: boolean;
-              is_final?: boolean; status?: string; label?: string;
-            };
-
-            if (msg.type === "voice_user" && msg.text) {
-              onVoiceMessage?.({ role: "user", content: msg.text, isVoice: true });
-
-            } else if (msg.type === "voice_assistant") {
-              onVoiceMessage?.({
-                role: "assistant", content: msg.text || "", isVoice: true,
-                is_chunk: msg.is_chunk, is_final: msg.is_final,
-              });
-
-            } else if (msg.type === "voice_thinking") {
-              if (msg.status === "start")      setThinkingLabel(msg.label ?? "Thinking…");
-              else if (msg.status === "clear") setThinkingLabel(null);
-
-            } else if (msg.type === "voice_dashboard" && msg.spec) {
-              onDashboard?.(msg.spec);
-
-            } else if (msg.type === "voice_dashboard_id" && msg.id) {
-              onVoiceDashboardId?.(msg.id, msg.title || "Dashboard");
-            }
-          } catch { /* ignore malformed */ }
-        };
-      };
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "connected") setSessionState("connected");
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-          setErrorMsg("WebRTC connection lost.");
-          setSessionState("error");
+      // 6. Set up mic audio capture — try AudioWorklet first, fallback to ScriptProcessor
+      let audioChunkCount = 0;
+      const sendPcm = (pcmBuffer: ArrayBuffer) => {
+        audioChunkCount++;
+        if (audioChunkCount <= 5 || audioChunkCount % 100 === 0) {
+          console.log(`[Voice] Sending audio chunk #${audioChunkCount}: ${pcmBuffer.byteLength} bytes`);
+        }
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(pcmBuffer);
         }
       };
 
-      pc.createDataChannel("data");
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      const source = recCtx.createMediaStreamSource(stream);
 
-      await new Promise<void>((resolve) => {
-        if (pc.iceGatheringState === "complete") { resolve(); return; }
-        pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") resolve(); };
-        setTimeout(resolve, 4000);
-      });
-
-
-      // Ensure we have a valid admin_id. 
-      // The user wants us to get it directly from Supabase for correctness.
-      let finalAdminId = adminId || "";
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user?.id) finalAdminId = user.id;
-      } catch (err) {
-        console.warn("[Voice] Failed to fetch user from Supabase, falling back to prop:", err);
-      }
+        // AudioWorklet approach
+        const blob = new Blob([PCM_RECORDER_PROCESSOR], { type: "application/javascript" });
+        const workletUrl = URL.createObjectURL(blob);
+        await recCtx.audioWorklet.addModule(workletUrl);
+        URL.revokeObjectURL(workletUrl);
 
-      const offerBody: Record<string, string> = {
-        sdp:      pc.localDescription!.sdp,
-        type:     pc.localDescription!.type,
-        admin_id: finalAdminId,  // ← forwarded to enterprise agent for Composio
-      };
-      if (pcIdRef.current) offerBody.pc_id = pcIdRef.current;
+        const workletNode = new AudioWorkletNode(recCtx, "pcm-recorder");
+        source.connect(workletNode);
+        // Connect to destination to keep the node alive in the audio graph
+        // Use a zero-gain node to prevent echo
+        const silencer = recCtx.createGain();
+        silencer.gain.value = 0;
+        workletNode.connect(silencer);
+        silencer.connect(recCtx.destination);
 
-      const res = await fetch(`${AGENT}/voice/offer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(offerBody),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || `Server error ${res.status}`);
+        workletNode.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+          sendPcm(e.data);
+        };
+        console.log("[Voice] ✓ AudioWorklet mic recorder set up successfully");
+
+      } catch (workletErr) {
+        // Fallback: ScriptProcessorNode (deprecated but universally supported)
+        console.warn("[Voice] AudioWorklet failed, using ScriptProcessor fallback:", workletErr);
+        const processor = recCtx.createScriptProcessor(4096, 1, 1);
+        source.connect(processor);
+        processor.connect(recCtx.destination);
+
+        processor.onaudioprocess = (e) => {
+          const float32 = e.inputBuffer.getChannelData(0);
+          const pcm16 = new Int16Array(float32.length);
+          for (let i = 0; i < float32.length; i++) {
+            pcm16[i] = Math.max(-1, Math.min(1, float32[i])) * 0x7fff;
+          }
+          sendPcm(pcm16.buffer);
+        };
+        console.log("[Voice] ✓ ScriptProcessor fallback set up successfully");
       }
-      const { sdp, type, pc_id } = await res.json();
-      pcIdRef.current = pc_id;
-      await pc.setRemoteDescription({ sdp, type });
-      setSessionState("connected");
 
     } catch (err: unknown) {
+      console.error("[Voice] handleStart error:", err);
       setErrorMsg(err instanceof Error ? err.message : "Unknown error.");
       setSessionState("error");
       cleanup();
     }
   };
 
-  const handleEnd  = () => { cleanup(); setSessionState("idle"); setIsMuted(false); };
+  const handleEnd = () => { cleanup(); setSessionState("idle"); setIsMuted(false); };
   const handleMute = () => {
     if (!streamRef.current) return;
     const next = !isMuted;
@@ -161,95 +292,155 @@ export default function VoiceAgentPanel({ adminId, onVoiceMessage, onDashboard, 
     setIsMuted(next);
   };
 
-  const isActive    = sessionState === "connecting" || sessionState === "connected";
+  const isActive = sessionState === "connecting" || sessionState === "connected";
   const isConnected = sessionState === "connected";
 
   const statusLabel =
-    sessionState === "connecting" ? "Connecting…"      :
-    sessionState === "connected"  ? "Connected"        :
-    sessionState === "error"      ? "Connection Error" : "Voice Agent";
+    sessionState === "connecting" ? "Connecting…" :
+    sessionState === "connected"  ? "Connected" :
+    sessionState === "error"      ? "Error" : "Voice";
 
   const statusSub =
-    sessionState === "idle"       ? "Click the orb to start a voice session" :
-    sessionState === "connecting" ? "Establishing WebRTC connection…"         :
-    sessionState === "connected"  ? "Powered by Sarvam AI · Google Gemini"   : errorMsg;
+    sessionState === "idle"       ? "Tap to start a voice session" :
+    sessionState === "connecting" ? "Opening WebSocket…" :
+    sessionState === "connected"  ? "Sarvam AI · Google Gemini" : errorMsg;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "space-between",
-      padding: "28px 20px 24px", overflowY: "auto" }}>
+    <div style={{
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "24px 20px 20px",
+      overflowY: "auto",
+      fontFamily: "var(--font-sans, 'Geist', sans-serif)",
+    }}>
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center", gap: "24px", width: "100%" }}>
+      <div style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "20px",
+        width: "100%",
+      }}>
 
         {/* Orb */}
-        <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px" }}>
+        <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: "18px" }}>
           {isActive && (<>
-            <div className="agent-ring agent-ring-1" />
+            <div className="agent-ring" />
             <div className="agent-ring agent-ring-2" />
             <div className="agent-ring agent-ring-3" />
           </>)}
 
-          <div onClick={sessionState === "idle" ? handleStart : undefined}
+          <div
+            onClick={sessionState === "idle" ? handleStart : undefined}
             className={isActive ? "voice-orb-active" : ""}
             style={{
-              width: "108px", height: "108px", borderRadius: "50%",
-              background: isActive ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.05)",
-              border: isActive ? "1.5px solid rgba(255,255,255,0.25)" : "1.5px solid rgba(255,255,255,0.1)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "all 0.5s cubic-bezier(0.34,1.56,0.64,1)",
-              position: "relative", zIndex: 1,
+              width: "96px",
+              height: "96px",
+              borderRadius: "50%",
+              background: isActive ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)",
+              border: isActive
+                ? "1px solid rgba(255,255,255,0.18)"
+                : "1px solid rgba(255,255,255,0.09)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.4s cubic-bezier(0.34,1.56,0.64,1)",
+              position: "relative",
+              zIndex: 1,
               cursor: sessionState === "idle" ? "pointer" : "default",
-              backdropFilter: "blur(12px)",
-            }}>
-            {!isActive
-              ? <Bot size={40} color="rgba(255,255,255,0.5)" strokeWidth={1.5} />
-              : <div style={{ display: "flex", alignItems: "flex-end", gap: "4px", height: "32px" }}>
-                  {bars.map((_, i) => (
-                    <div key={i} className={`voice-bar voice-bar-${i + 1}`} style={{
-                      width: "4px", borderRadius: "3px", background: "rgba(255,255,255,0.8)",
-                      animationPlayState: isConnected ? "running" : "paused",
-                      height: `${7 + i * 4}px`, transition: "height 0.3s",
-                    }} />
-                  ))}
-                </div>
-            }
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            {!isActive ? (
+              <Bot size={36} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+            ) : (
+              <div style={{ display: "flex", alignItems: "flex-end", gap: "4px", height: "28px" }}>
+                {bars.map((_, i) => (
+                  <div key={i} className={`voice-bar voice-bar-${i + 1}`} style={{
+                    width: "3px",
+                    borderRadius: "2px",
+                    background: "rgba(255,255,255,0.75)",
+                    animationPlayState: isConnected ? "running" : "paused",
+                    height: `${6 + i * 4}px`,
+                    transition: "height 0.3s",
+                  }} />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Status */}
-          <div style={{ textAlign: "center", maxWidth: "240px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", marginBottom: "6px" }}>
-              {isConnected && <div style={{ width: "6px", height: "6px", borderRadius: "50%",
-                background: "#4ade80", boxShadow: "0 0 8px rgba(74,222,128,0.5)" }} />}
-              <p style={{ margin: 0, fontSize: "15px", fontWeight: 600, fontFamily: "'Sora', sans-serif",
-                color: sessionState === "error" ? "#f87171" : "rgba(255,255,255,0.88)" }}>
+          <div style={{ textAlign: "center", maxWidth: "220px" }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              marginBottom: "5px",
+            }}>
+              {isConnected && (
+                <div style={{
+                  width: "5px",
+                  height: "5px",
+                  borderRadius: "50%",
+                  background: "#22c55e",
+                  boxShadow: "0 0 6px rgba(34,197,94,0.4)",
+                }} />
+              )}
+              <p style={{
+                margin: 0,
+                fontSize: "14px",
+                fontWeight: 500,
+                color: sessionState === "error" ? "#ff4444" : "rgba(255,255,255,0.82)",
+                letterSpacing: "-0.01em",
+              }}>
                 {statusLabel}
               </p>
             </div>
-            <p style={{ margin: 0, fontSize: "11.5px", fontFamily: "'Sora', sans-serif", lineHeight: 1.5,
-              color: sessionState === "error" ? "rgba(248,113,113,0.65)" : "rgba(255,255,255,0.3)" }}>
+            <p style={{
+              margin: 0,
+              fontSize: "11px",
+              lineHeight: 1.5,
+              color: sessionState === "error" ? "rgba(255,68,68,0.6)" : "rgba(255,255,255,0.28)",
+            }}>
               {statusSub}
             </p>
           </div>
         </div>
 
-        {/* ── Thinking pill ── */}
+        {/* Thinking pill */}
         <div style={{
-          height: "34px", display: "flex", alignItems: "center", justifyContent: "center",
-          opacity: thinkingLabel ? 1 : 0, transition: "opacity 0.25s", pointerEvents: "none",
+          height: "32px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: thinkingLabel ? 1 : 0,
+          transition: "opacity 0.22s",
+          pointerEvents: "none",
         }}>
           {thinkingLabel && (
             <div style={{
-              display: "flex", alignItems: "center", gap: "8px",
-              padding: "7px 16px",
-              background: "rgba(139, 92, 246, 0.08)",
-              border: "1px solid rgba(139, 92, 246, 0.22)",
-              borderRadius: "40px",
+              display: "flex",
+              alignItems: "center",
+              gap: "7px",
+              padding: "6px 14px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "30px",
             }}>
-              <Loader2 size={12} color="#A78BFA"
+              <Loader2 size={11} color="rgba(255,255,255,0.45)"
                 style={{ flexShrink: 0, animation: "vaSpin 1s linear infinite" }} />
-              <span style={{ fontSize: "11.5px", fontWeight: 500, color: "#A78BFA",
-                fontFamily: "'Sora', sans-serif", whiteSpace: "nowrap" }}>
+              <span style={{
+                fontSize: "11px",
+                fontWeight: 400,
+                color: "rgba(255,255,255,0.50)",
+                whiteSpace: "nowrap",
+              }}>
                 {thinkingLabel}
               </span>
             </div>
@@ -257,72 +448,141 @@ export default function VoiceAgentPanel({ adminId, onVoiceMessage, onDashboard, 
         </div>
 
         {/* Controls */}
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           {isActive && (<>
-            <button onClick={handleMute} style={{
-              width: "44px", height: "44px", borderRadius: "50%", cursor: "pointer",
-              background: isMuted ? "rgba(248,113,113,0.1)" : "rgba(255,255,255,0.06)",
-              border: `1px solid ${isMuted ? "rgba(248,113,113,0.3)" : "rgba(255,255,255,0.1)"}`,
-              color: isMuted ? "#f87171" : "rgba(255,255,255,0.55)",
-              display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
-            }}>
-              {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+            <button
+              onClick={handleMute}
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                cursor: "pointer",
+                background: isMuted ? "rgba(255,68,68,0.08)" : "rgba(255,255,255,0.05)",
+                border: `1px solid ${isMuted ? "rgba(255,68,68,0.20)" : "rgba(255,255,255,0.09)"}`,
+                color: isMuted ? "#ff4444" : "rgba(255,255,255,0.45)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.18s",
+              }}
+            >
+              {isMuted ? <MicOff size={15} /> : <Mic size={15} />}
             </button>
 
-            <button onClick={handleEnd} style={{
-              width: "58px", height: "58px", borderRadius: "50%",
-              background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.28)",
-              color: "#f87171", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,0.2)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(248,113,113,0.12)"; }}>
-              <X size={22} />
+            <button
+              onClick={handleEnd}
+              style={{
+                width: "52px",
+                height: "52px",
+                borderRadius: "50%",
+                background: "rgba(255,68,68,0.08)",
+                border: "1px solid rgba(255,68,68,0.18)",
+                color: "#ff4444",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.18s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,68,68,0.15)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,68,68,0.08)"; }}
+            >
+              <X size={18} />
             </button>
 
-            <button style={{
-              width: "44px", height: "44px", borderRadius: "50%", cursor: "default",
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-              color: "rgba(255,255,255,0.55)", display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <Volume2 size={18} />
+            <button
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                cursor: "default",
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.09)",
+                color: "rgba(255,255,255,0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Volume2 size={15} />
             </button>
           </>)}
 
           {sessionState === "idle" && (
-            <button onClick={handleStart} style={{
-              display: "flex", alignItems: "center", gap: "9px", padding: "12px 26px",
-              borderRadius: "40px", background: "rgba(255,255,255,0.09)",
-              border: "1px solid rgba(255,255,255,0.16)", color: "rgba(255,255,255,0.88)",
-              cursor: "pointer", fontSize: "13px", fontWeight: 600,
-              fontFamily: "'Sora', sans-serif", transition: "all 0.2s",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.14)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.16)"; }}>
-              <Mic size={16} /> Start Session
+            <button
+              onClick={handleStart}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 22px",
+                borderRadius: "30px",
+                background: "rgba(255,255,255,0.07)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "rgba(255,255,255,0.80)",
+                cursor: "pointer",
+                fontSize: "13px",
+                fontWeight: 500,
+                fontFamily: "var(--font-sans, 'Geist', sans-serif)",
+                transition: "all 0.18s",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.11)";
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.20)";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.07)";
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+              }}
+            >
+              <Mic size={14} strokeWidth={1.5} /> Start session
             </button>
           )}
 
           {sessionState === "error" && (
-            <button onClick={() => { setSessionState("idle"); setErrorMsg(""); }} style={{
-              padding: "10px 22px", borderRadius: "40px",
-              background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.22)",
-              color: "#f87171", cursor: "pointer", fontSize: "12.5px",
-              fontFamily: "'Sora', sans-serif", fontWeight: 600,
-            }}>
-              Try Again
+            <button
+              onClick={() => { setSessionState("idle"); setErrorMsg(""); }}
+              style={{
+                padding: "9px 20px",
+                borderRadius: "30px",
+                background: "rgba(255,68,68,0.06)",
+                border: "1px solid rgba(255,68,68,0.16)",
+                color: "#ff4444",
+                cursor: "pointer",
+                fontSize: "12.5px",
+                fontFamily: "var(--font-sans, 'Geist', sans-serif)",
+                fontWeight: 500,
+              }}
+            >
+              Try again
             </button>
           )}
         </div>
       </div>
 
       {/* Footer */}
-      <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "8px 14px",
-        borderRadius: "40px", background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.07)", marginTop: "20px" }}>
-        {isActive ? <Wifi size={12} color="rgba(255,255,255,0.3)" /> : <Clock size={12} color="rgba(255,255,255,0.25)" />}
-        <span style={{ fontSize: "10.5px", color: "rgba(255,255,255,0.25)", fontFamily: "'Sora', sans-serif", fontWeight: 500 }}>
-          {isActive ? "WebRTC · Enterprise bridge · 8 kHz audio" : ""}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "6px 12px",
+        borderRadius: "30px",
+        background: "rgba(255,255,255,0.03)",
+        border: "1px solid rgba(255,255,255,0.06)",
+        marginTop: "18px",
+      }}>
+        {isActive
+          ? <Wifi size={11} color="rgba(255,255,255,0.22)" />
+          : <Clock size={11} color="rgba(255,255,255,0.18)" />
+        }
+        <span style={{
+          fontSize: "10px",
+          color: "rgba(255,255,255,0.20)",
+          fontFamily: "var(--font-sans, 'Geist', sans-serif)",
+          fontWeight: 400,
+          letterSpacing: "0.02em",
+        }}>
+          {isActive ? "WebSocket · Gemini Live" : "Ready to connect"}
         </span>
       </div>
 

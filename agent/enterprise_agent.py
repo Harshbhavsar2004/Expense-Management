@@ -127,13 +127,16 @@ def resolve_user(
     tool_context: ToolContext,
     name: Optional[str] = None,
     phone: Optional[str] = None,
+    user_id: Optional[str] = None,
+    organization: Optional[str] = None,
+    team: Optional[str] = None,
 ) -> str:
     """
-    Find users by name (ilike) or phone (exact).
-    Returns JSON with id, full_name, role, phone.
-    Always call this before using any user_id.
+    Find users by name (ilike), phone (exact), UUID (user_id), organization, or team.
+    Returns JSON with id, full_name, role, phone, organization, team.
+    Always call this before using any user_id if you need metadata.
     """
-    _debug("resolve_user CALLED", name=name, phone=phone)
+    _debug("resolve_user CALLED", name=name, phone=phone, user_id=user_id, organization=organization, team=team)
     try:
         base = _supabase_url()
         key = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
@@ -143,21 +146,32 @@ def resolve_user(
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
+        # --- [NEW] Multi-column select including org/team ---
+        select_cols = "id,full_name,role,phone,email,created_at,organization,team"
+        
         if name:
             import urllib.parse
             safe_name = name.replace("*", "").strip()
             encoded = urllib.parse.quote(f"ilike.*{safe_name}*", safe=".*")
-            url = f"{base}/rest/v1/users?select=id,full_name,role,phone,email,created_at&full_name={encoded}"
+            url = f"{base}/rest/v1/users?select={select_cols}&full_name={encoded}"
+            
+            # Append other filters
+            if phone:        url += f"&phone=eq.{phone}"
+            if user_id:      url += f"&id=eq.{user_id}"
+            if organization: url += f"&organization=eq.{urllib.parse.quote(organization)}"
+            if team:         url += f"&team=eq.{urllib.parse.quote(team)}"
+            
             r = requests.get(url, headers=headers, timeout=15)
-        elif phone:
-            r = requests.get(
-                f"{base}/rest/v1/users",
-                headers=headers,
-                params=[("select", "id,full_name,role,phone,email,created_at"), ("phone", f"eq.{phone}")],
-                timeout=15,
-            )
+        elif phone or user_id or organization or team:
+            params = [("select", select_cols)]
+            if phone:        params.append(("phone", f"eq.{phone}"))
+            if user_id:      params.append(("id", f"eq.{user_id}"))
+            if organization: params.append(("organization", f"eq.{organization}"))
+            if team:         params.append(("team", f"eq.{team}"))
+            
+            r = requests.get(f"{base}/rest/v1/users", headers=headers, params=params, timeout=15)
         else:
-            return _err("Provide at least name or phone.")
+            return _err("Provide at least name, phone, user_id, organization, or team.")
         if not r.ok:
             return _err(f"Supabase error {r.status_code}: {r.text[:200]}")
         rows = r.json()
@@ -228,14 +242,32 @@ def get_applications(
     tool_context: ToolContext,
     user_id: Optional[str] = None,
     status: Optional[str] = None,
+    organization: Optional[str] = None,
+    team: Optional[str] = None,
     limit: int = 30,
 ) -> str:
-    """Fetch expense applications ordered by created_at desc."""
+    """Fetch expense applications. Can filter by user, status, organization, or team."""
     try:
-        params: Dict[str, Any] = {"select": "*", "order": "created_at.desc", "limit": str(limit)}
-        if user_id: params["user_id"] = f"eq.{user_id}"
-        if status: params["status"] = f"eq.{status}"
-        return _ok(_get("applications", params))
+        # If filtering by org/team, we need to join with users table
+        select_clause = "*"
+        if organization or team:
+            select_clause = "*,users!inner(organization,team)"
+            
+        params: List[tuple] = [
+            ("select", select_clause),
+            ("order", "created_at.desc"),
+            ("limit", str(limit))
+        ]
+        
+        if user_id: params.append(("user_id", f"eq.{user_id}"))
+        if status:  params.append(("status", f"eq.{status}"))
+        if organization: params.append(("users.organization", f"eq.{organization}"))
+        if team:         params.append(("users.team", f"eq.{team}"))
+        
+        base_url = f"{_supabase_url()}/rest/v1/applications"
+        r = requests.get(base_url, headers=_headers(), params=params, timeout=15)
+        r.raise_for_status()
+        return _ok(r.json())
     except Exception as exc:
         return _err(str(exc))
 
@@ -352,13 +384,23 @@ def get_chat_history(tool_context: ToolContext, user_phone: Optional[str] = None
         return _err(str(exc))
 
 
-def get_users(tool_context: ToolContext, role: Optional[str] = None) -> str:
-    """List all users. Admin use only."""
+def get_users(
+    tool_context: ToolContext,
+    role: Optional[str] = None,
+    organization: Optional[str] = None,
+    team: Optional[str] = None,
+) -> str:
+    """List users. Filter by role, organization, or team."""
     try:
+        params = [("select", "id,full_name,role,phone,email,created_at,organization,team")]
+        if role:         params.append(("role", f"eq.{role}"))
+        if organization: params.append(("organization", f"eq.{organization}"))
+        if team:         params.append(("team", f"eq.{team}"))
+        
         r = requests.get(
             f"{_supabase_url()}/rest/v1/users",
             headers={**_headers(), "Prefer": "return=representation"},
-            params=[("select", "id,full_name,role,phone,email,created_at"), *([("role", f"eq.{role}")] if role else [])],
+            params=params,
             timeout=15,
         )
         r.raise_for_status()
@@ -434,21 +476,32 @@ def get_expenses_detail(
     user_id: Optional[str] = None,
     application_id: Optional[str] = None,
     verified: Optional[bool] = None,
+    organization: Optional[str] = None,
+    team: Optional[str] = None,
     limit: int = 50,
 ) -> str:
-    """Fetch full expense records. application_id: human-readable like 'EXP-6HL6'."""
+    """Fetch expense records. Can filter by user, app, organization, or team."""
     try:
+        select_clause = "id,user_name,application_id,client_name,visit_duration,expense_type," \
+                        "date_range,claimed_amount,claimed_amount_numeric,reimbursable_amount," \
+                        "verified,mismatches,audit_explanation,city,city_tier,created_at," \
+                        "participant_names,participant_count"
+                        
+        if organization or team:
+            select_clause += ",users!inner(organization,team)"
+
         params = [
-            ("select", "id,user_name,application_id,client_name,visit_duration,expense_type,"
-                       "date_range,claimed_amount,claimed_amount_numeric,reimbursable_amount,"
-                       "verified,mismatches,audit_explanation,city,city_tier,created_at,"
-                       "participant_names,participant_count"),
+            ("select", select_clause),
             ("order", "created_at.desc"),
             ("limit", str(min(limit, 200))),
         ]
+        
         if user_id: params.append(("user_id", f"eq.{user_id}"))
         if application_id: params.append(("application_id", f"eq.{application_id}"))
         if verified is not None: params.append(("verified", f"eq.{str(verified).lower()}"))
+        if organization: params.append(("users.organization", f"eq.{organization}"))
+        if team:         params.append(("users.team", f"eq.{team}"))
+        
         r = requests.get(
             f"{_supabase_url()}/rest/v1/expenses",
             headers={**_headers(), "Prefer": "return=representation"},
@@ -548,6 +601,15 @@ If you see "Role: admin" in context, treat them as admin immediately.
 If you see "Role: employee" in context, restrict to their user_id only.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RESPONSE STYLE & COMPREHENSIVENESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Be thorough and helpful. Don't just give the bare minimum.
+- For data queries, provide a brief analysis or insight after the table. 
+- Explain "why" an expense was flagged (e.g., "This meal expense exceeds the ₹900 limit for Tier 1 cities").
+- If the user asks for a comparison, explain the key differences, don't just show the numbers.
+- Maintain a professional, executive tone.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ROLE & ACCESS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 You have read-only access to all Fristine Infotech expense management tables:
@@ -566,8 +628,11 @@ Exception: set_policy_override and clear_policy_override are allowed for admins.
 RBAC — ROLE-BASED ACCESS CONTROL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 If role = "employee":
-  - Only return that employee's own data (their user_id).
-  - Never reveal another employee's expenses, policies, phone, or email.
+  - Generally restrict data to that employee's own user_id.
+  - NEW: If the employee asks specifically for "team" or "organization" related 
+    stats/expenses, you may query using their organization and team filters to 
+    provide aggregate or team-level insights, while still respecting privacy 
+    (do not reveal private phone/email of others unless necessary).
 
 If role = "admin":
   - Full cross-user access.
@@ -607,15 +672,30 @@ CHAIN RULES — ALWAYS FOLLOW
 6. SEMANTIC SEARCH RULE:
    Natural language expense searches → prefer semantic_search_expenses.
 
-7. FORMAT RULE:
-   - Always start with a one-line summary.
-   - Present data as clean markdown tables.
+7. TEAM & ORGANIZATION RULE:
+   When asked about "team expenses" or "org stats", look up the requesting 
+   user's organization/team first (if not in context) and use them as 
+   parameters in get_users, get_expenses_detail, or get_applications.
+
+8. FORMAT RULE:
+   - Always start with a 1-2 sentence professional summary of your findings.
+   - Present data as clean markdown tables in chat. (EXCEPTION: After sending an email or Slack message, only show a success confirmation).
    - Applications: # | ID | Client | Period | City | Status | Claimed | Reimbursable
    - Expenses: Employee | App ID | Client | Date | Type | Claimed | Reimbursable | Issues
    - Status: **draft**, **submitted**, **approved**, **rejected**.
    - Monetary: ₹X,XXX.XX. If ₹0.00, show as —.
-   - EMAIL DISPLAY:
-     When reading or displaying an email:
+
+   - OUTGOING MESSAGES (GMAIL/SLACK):
+     When sending summaries via GMAIL_SEND_EMAIL or SLACK_SEND_MESSAGE:
+     1. Use a clean tabular format.
+     2. GMAIL: You MUST use a professional HTML <table>. Never use markdown tables for Gmail.
+        Include inline CSS for borders, 8px padding, and a light gray background (#f2f2f2) for headers.
+        Columns: # | ID | Client | Period | City | Status | Claimed | Reimbursable | Payout Status
+     3. SLACK: Use a markdown table.
+     4. Ensure currency is formatted as ₹X,XXX.XX.
+     5. Include a professional greeting and sign-off.
+
+   - EMAIL DISPLAY (When reading/displaying in chat):
      1. Use ### [Subject] for the subject line.
      2. Add a horizontal rule (---) after the headers.
      3. Use **From:** [Name] <email>, **To:** [Name] <email>, **Date:** [Date].
@@ -659,10 +739,10 @@ CORRECT: GMAIL_FETCH_EMAILS(query="is:unread", max_results=5)
 WRONG:   GMAIL_FETCH_EMAILS(user_id="someone@gmail.com", ...)
 
 FLOW for sending an email:
-  1. Call get_users to find the employee's email address
-  2. Compose a professional email with Fristine Infotech letterhead tone
-  3. Call GMAIL_SEND_EMAIL with to, subject, and body
-  4. Confirm: "✅ Email sent to [name] at [email]"
+  1. Call get_users to find the employee's email address.
+  2. Compose a professional email with Fristine Infotech letterhead tone. Use an HTML table for summaries.
+  3. Call GMAIL_SEND_EMAIL with to, subject, and body.
+  4. RESPONSE RULE: In your chat response to the user, ONLY output "✅ Email sent to [name] at [email]". Do NOT repeat the table, HTML content, or the email body in the chat bubble.
 
 IMPORTANT: Only use external tools when the admin explicitly asks.
 Never send emails or post messages automatically.

@@ -47,7 +47,7 @@ function getCategoryIcon(type?: string): React.ReactNode {
 // ─── Status Map ───────────────────────────────────────────────────────────────
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
   draft:     { label: "Draft",     className: "bg-slate-100 text-slate-500 border-slate-200"      },
-  submitted: { label: "Submitted", className: "bg-violet-50 text-violet-600 border-violet-200"    },
+  submitted: { label: "Submitted", className: "bg-blue-50 text-blue-600 border-blue-200"    },
   approved:  { label: "Approved",  className: "bg-emerald-50 text-emerald-600 border-emerald-200" },
   rejected:  { label: "Rejected",  className: "bg-rose-50 text-rose-500 border-rose-200"          },
 };
@@ -154,7 +154,7 @@ function ExpenseCard({
       className={`
         group relative bg-white rounded-2xl border transition-all duration-200 cursor-pointer
         ${selected
-          ? "border-violet-300 shadow-md shadow-violet-100/50 ring-2 ring-violet-200/60"
+          ? "border-blue-300 shadow-md shadow-blue-100/50 ring-2 ring-blue-200/60"
           : "border-slate-100 hover:border-slate-200 hover:shadow-sm shadow-sm"
         }
       `}
@@ -194,7 +194,7 @@ function ExpenseCard({
             )}
 
             {expense.verified && (
-              <span className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full text-[10px] font-bold bg-violet-50 text-violet-500 border border-violet-100">
+              <span className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full text-[10px] font-bold bg-violet-50 text-blue-500 border border-blue-100">
                 <ShieldCheck size={8} /> Verified
               </span>
             )}
@@ -251,9 +251,11 @@ function ExpenseCard({
 function ExpenseDetailPanel({
   expense,
   onClose,
+  onViewScreenshot,
 }: {
   expense: ExpenseRow | null;
   onClose: () => void;
+  onViewScreenshot: (url: string) => void;
 }) {
   if (!expense) return null;
 
@@ -292,13 +294,19 @@ function ExpenseDetailPanel({
 
         {/* Screenshot */}
         {screenshotUrl ? (
-          <div>
+          <div className="group/img relative cursor-zoom-in" onClick={() => onViewScreenshot(screenshotUrl)}>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Payment Screenshot</p>
-            <img
-              src={screenshotUrl}
-              alt="Payment Screenshot"
-              className="w-full rounded-2xl border border-slate-100 object-contain max-h-64"
-            />
+            <div className="relative rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
+              <img
+                src={screenshotUrl}
+                alt="Payment Screenshot"
+                className="w-full object-contain max-h-64 transition-transform duration-300 group-hover/img:scale-105"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/5 flex items-center justify-center transition-colors">
+                <Eye size={20} className="text-white opacity-0 group-hover/img:opacity-100 transition-opacity" />
+              </div>
+            </div>
+            <p className="text-[9px] text-center text-slate-400 mt-2 font-medium">Click to expand</p>
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center py-8 gap-2">
@@ -387,12 +395,12 @@ function SkeletonCard({ delay = 0 }: { delay?: number }) {
 // ─── Stat Chip ────────────────────────────────────────────────────────────────
 function StatChip({ icon, label, value, color }: {
   icon: React.ReactNode; label: string; value: string;
-  color: "slate" | "emerald" | "violet" | "rose";
+   color: "slate" | "emerald" | "blue" | "rose";
 }) {
   const map = {
     slate:   "bg-slate-50 text-slate-600 border-slate-200",
     emerald: "bg-emerald-50 text-emerald-600 border-emerald-200",
-    violet:  "bg-violet-50 text-violet-600 border-violet-200",
+    blue:  "bg-blue-50 text-blue-600 border-blue-200",
     rose:    "bg-rose-50 text-rose-500 border-rose-200",
   };
   return (
@@ -555,14 +563,14 @@ export default function ApplicationDetailsPage() {
             <button
               onClick={submitForApproval}
               disabled={submitting || expenses.length === 0}
-              className="shrink-0 font-semibold rounded-xl transition-all active:scale-[0.97] px-4 py-1.5 text-xs bg-violet-500 hover:bg-violet-600 text-white shadow-sm shadow-violet-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              className="shrink-0 font-semibold rounded-xl transition-all active:scale-[0.97] px-4 py-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white shadow-sm shadow-blue-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
               {submitting ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />}
               Submit
             </button>
           )}
           {!loading && status === "submitted" && isEmployee && (
-            <div className="flex items-center gap-1.5 text-violet-600 font-bold text-xs bg-violet-50 px-3 py-1.5 rounded-xl border border-violet-100 shrink-0">
+            <div className="flex items-center gap-1.5 text-blue-600 font-bold text-xs bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shrink-0">
               <Clock size={12} /> Awaiting Approval
               {submitSummary && submitSummary.flagged_count > 0 && (
                 <span className="text-rose-500 ml-1">· {submitSummary.flagged_count} flagged</span>
@@ -640,6 +648,7 @@ export default function ApplicationDetailsPage() {
         <ExpenseDetailPanel
           expense={selectedRecord}
           onClose={() => setSelectedRecord(null)}
+          onViewScreenshot={setScreenshotUrl}
         />
 
         <AuditAgent

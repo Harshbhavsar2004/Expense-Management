@@ -13,8 +13,10 @@ export default function MessageList({ messages, messagesEndRef }: MessageListPro
   return (
     <div style={{
       width: "100%",
-      padding: "32px 32px 12px",
-      display: "flex", flexDirection: "column", gap: "0",
+      padding: "28px 28px 10px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "0",
     }}>
       {messages.map((msg, idx) => (
         <MessageBubble key={msg.id} msg={msg} idx={idx} />

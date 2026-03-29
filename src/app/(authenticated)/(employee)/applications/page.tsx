@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Filter, Monitor, ChevronLeft, ChevronRight } from "lucide-react";
+import { CircularLoader } from "@/components/CircularLoader";
 
 function WhatsAppIcon({ size = 14 }: { size?: number }) {
   return (
@@ -56,8 +57,8 @@ const SOURCE_META: Record<Source, { label: string; icon: React.ReactNode; bg: st
     label: "Audit AI",
     icon: <Monitor size={13} strokeWidth={2} />,
     bg: "bg-violet-50",
-    text: "text-violet-600",
-    border: "border-violet-200",
+    text: "text-blue-600",
+    border: "border-blue-200",
   },
   whatsapp: {
     label: "WhatsApp",
@@ -135,7 +136,7 @@ function Pagination({
               onClick={() => onChange(p as number)}
               className={`min-w-8 h-8 rounded-lg text-sm font-semibold transition-all ${
                 p === current
-                  ? "bg-violet-500 text-white shadow-sm shadow-violet-200"
+                  ? "bg-blue-500 text-white shadow-sm shadow-blue-200"
                   : "text-slate-600 hover:bg-slate-100"
               }`}
             >
@@ -238,13 +239,13 @@ export default function ApplicationsPage() {
         <div className="flex flex-col md:flex-row gap-4 items-center">
           <div className="flex-1 relative w-full group">
             <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors"
               size={18}
             />
             <input
               type="text"
               placeholder="Search by Application ID, Client or City..."
-              className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all font-medium"
+              className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all font-medium"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -257,37 +258,7 @@ export default function ApplicationsPage() {
         {/* Content */}
         <div className="flex-1 overflow-x-auto overflow-y-auto pb-12">
           {loading ? (
-            <div
-              className="flex flex-col gap-3 transition-opacity duration-300 ease-in-out"
-              style={{ opacity: fadeOut ? 0 : 1 }}
-            >
-              <div className="min-w-215 border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                <div className="border-b border-slate-200 bg-slate-50 px-6 py-4 flex gap-6">
-                  {[120, 160, 80, 100, 130, 90, 80].map((w, i) => (
-                    <div
-                      key={i}
-                      className="h-3 rounded-full bg-slate-200 animate-pulse"
-                      style={{ width: w, animationDelay: `${i * 60}ms`, animationDuration: "1.6s" }}
-                    />
-                  ))}
-                </div>
-                {[...Array(5)].map((_, rowIdx) => (
-                  <div
-                    key={rowIdx}
-                    className="border-b border-slate-100 px-6 py-4 flex gap-6 items-center"
-                    style={{ opacity: 1 - rowIdx * 0.15 }}
-                  >
-                    {[120, 160, 80, 100, 130, 90, 80].map((w, colIdx) => (
-                      <div
-                        key={colIdx}
-                        className="h-3.5 rounded-full bg-slate-100 animate-pulse"
-                        style={{ width: w * (0.7 + Math.random() * 0.5), animationDelay: `${rowIdx * 80 + colIdx * 40}ms`, animationDuration: "1.6s" }}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <CircularLoader message="Fetching applications..." />
           ) : filteredApps.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-50 mt-12 animate-fade-in">
               <Search size={64} className="text-slate-300 mb-4" />
@@ -315,7 +286,7 @@ export default function ApplicationsPage() {
                       className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group"
                     >
                       <td className="py-4 px-6">
-                        <span className="typo-body-default font-semibold text-violet-600 group-hover:text-violet-700 transition-colors">
+                        <span className="typo-body-default font-semibold text-blue-600 group-hover:text-blue-700 transition-colors">
                           {app.application_id}
                         </span>
                       </td>
@@ -343,7 +314,7 @@ export default function ApplicationsPage() {
                             app.status === "draft"
                               ? "bg-slate-100 text-slate-600 border-slate-200"
                               : app.status === "submitted"
-                              ? "bg-violet-100 text-violet-600 border-violet-200"
+                              ? "bg-blue-100 text-blue-600 border-blue-200"
                               : app.status === "approved"
                               ? "bg-emerald-100 text-emerald-600 border-emerald-200"
                               : "bg-rose-100 text-rose-600 border-rose-200"

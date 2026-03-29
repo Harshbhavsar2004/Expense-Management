@@ -79,6 +79,7 @@ export default function AdminAIBot() {
     supabase
       .from("users")
       .select("id,full_name,role,phone,email")
+      .neq("role", "admin")
       .then(({ data, error }) => {
         if (!error && data) setMentionUsers(data as MentionUser[]);
       });

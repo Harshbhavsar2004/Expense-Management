@@ -20,6 +20,7 @@ import {
   IconEdit,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { CircularLoader } from "@/components/CircularLoader";
 
 type Tab = "profile" | "bank";
 
@@ -119,14 +120,7 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-[#f7f9fb]">
-        <div className="flex flex-col items-center gap-4">
-          <IconLoader2 className="w-10 h-10 text-[#545f73] animate-spin" />
-          <p className="text-sm font-bold text-[#566166] animate-pulse font-['Manrope'] tracking-tight">Loading preferences...</p>
-        </div>
-      </div>
-    );
+    return <CircularLoader message="Loading preferences..." />;
   }
 
   const hasBankDetails = !!profile?.bank_account_number;
@@ -134,12 +128,6 @@ export default function SettingsPage() {
   return (
     <div className="flex-1 bg-[#f7f9fb] font-['Manrope',sans-serif] overflow-y-auto selection:bg-[#d8e3fb] selection:text-[#475266]">
       <main className="flex-1 p-6 lg:p-10 max-w-7xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-        {/* Page Title */}
-        <div className="mb-10 text-center md:text-left">
-          <h1 className="text-4xl font-extrabold tracking-tight text-[#2a3439] mb-2 font-['Manrope']">Account Settings</h1>
-          <p className="text-[#566166] text-lg">Manage your profile and account preferences.</p>
-        </div>
 
         {/* Tab Navigation */}
         <div className="flex gap-8 mb-10 border-b border-[#e1e9ee] overflow-x-auto no-scrollbar">
@@ -234,7 +222,7 @@ export default function SettingsPage() {
 
             {/* ── Profile Tab ── */}
             {activeTab === "profile" && (
-              <div className="bg-white rounded-[2rem] p-8 lg:p-10 shadow-[0_20px_50px_rgba(42,52,57,0.04)] border border-[#a9b4b9]/15">
+              <div className="bg-white rounded-[2rem] p-8 lg:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
                 <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-extrabold text-[#2a3439] mb-1">Profile Details</h2>
@@ -253,37 +241,37 @@ export default function SettingsPage() {
                 <form onSubmit={handleUpdate} className="space-y-10">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-3">
-                      <label className="block text-xs font-black text-[#566166]/60 uppercase tracking-widest pl-1">Full Name</label>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Full Name</label>
                       <input
                         type="text"
                         value={profile?.full_name || ""}
                         onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
-                        className="w-full bg-[#f7f9fb]/50 border-none border-b-2 border-[#e1e9ee] focus:border-[#545f73] focus:ring-0 px-1 py-3 text-[#2a3439] font-bold transition-all placeholder:text-[#a9b4b9]/40"
+                        className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 font-bold transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 placeholder:text-slate-300 shadow-sm"
                         placeholder="e.g. Harshal Bhavsar"
                       />
                     </div>
                     <div className="space-y-3 opacity-60">
-                      <label className="block text-xs font-black text-[#566166]/60 uppercase tracking-widest pl-1">Email Address</label>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Email Address</label>
                       <input
                         type="email"
                         value={profile?.email || ""}
                         readOnly
-                        className="w-full bg-transparent border-none border-b-2 border-[#e1e9ee]/30 cursor-not-allowed px-1 py-3 text-[#566166] font-medium"
+                        className="w-full bg-slate-50/50 border border-slate-100 cursor-not-allowed px-4 py-3 text-slate-500 font-medium rounded-2xl"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <label className="block text-xs font-black text-[#566166]/60 uppercase tracking-widest pl-1">WhatsApp Number</label>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest pl-1">WhatsApp Number</label>
                     <div className="relative group">
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2 pl-1 pr-3 border-r border-[#e1e9ee]">
-                        <span className="text-sm font-bold text-[#566166]">ID</span>
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2 pl-4 pr-3 border-r border-slate-200">
+                        <span className="text-sm font-bold text-slate-400">ID</span>
                       </div>
                       <input
                         type="tel"
                         value={profile?.phone || ""}
                         onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                        className="w-full bg-[#f7f9fb]/50 border-none border-b-2 border-[#e1e9ee] focus:border-[#545f73] focus:ring-0 pl-12 py-3 text-[#2a3439] font-bold transition-all placeholder:text-[#a9b4b9]/40"
+                        className="w-full bg-white border border-slate-200 rounded-2xl pl-16 pr-4 py-3 text-slate-900 font-bold transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 placeholder:text-slate-300 shadow-sm"
                         placeholder="e.g. 919876543210"
                       />
                     </div>
@@ -316,7 +304,7 @@ export default function SettingsPage() {
 
             {/* ── Bank Details Tab ── */}
             {activeTab === "bank" && (
-              <div className="bg-white rounded-[2rem] p-8 lg:p-10 shadow-[0_20px_50px_rgba(42,52,57,0.04)] border border-[#a9b4b9]/15">
+              <div className="bg-white rounded-[2rem] p-8 lg:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-extrabold text-[#2a3439] mb-1">Bank Details</h2>
@@ -399,31 +387,31 @@ export default function SettingsPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2 md:col-span-2">
-                        <label className="block text-xs font-black text-[#566166]/60 uppercase tracking-widest pl-1">Account Holder Name</label>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Account Holder Name</label>
                         <input
                           type="text"
                           autoFocus
                           placeholder="As printed on bank passbook"
                           value={bankForm.accountName}
                           onChange={e => { setBankForm(f => ({ ...f, accountName: e.target.value })); setBankError(""); }}
-                          className="w-full bg-[#f7f9fb]/50 border-none border-b-2 border-[#e1e9ee] focus:border-[#545f73] focus:ring-0 px-1 py-3 text-[#2a3439] font-bold transition-all placeholder:text-[#a9b4b9]/40"
+                          className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 font-bold transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 placeholder:text-slate-300 shadow-sm"
                         />
                       </div>
 
                       <div className="space-y-2">
-                        <label className="block text-xs font-black text-[#566166]/60 uppercase tracking-widest pl-1">Account Number</label>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Account Number</label>
                         <input
                           type="text"
                           inputMode="numeric"
                           placeholder="e.g. 012345678901"
                           value={bankForm.accountNumber}
                           onChange={e => { setBankForm(f => ({ ...f, accountNumber: e.target.value.replace(/\D/g, "") })); setBankError(""); }}
-                          className="w-full bg-[#f7f9fb]/50 border-none border-b-2 border-[#e1e9ee] focus:border-[#545f73] focus:ring-0 px-1 py-3 text-[#2a3439] font-bold tracking-widest transition-all placeholder:text-[#a9b4b9]/40"
+                          className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 font-bold tracking-widest transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 placeholder:text-slate-300 shadow-sm"
                         />
                       </div>
 
                       <div className="space-y-2">
-                        <label className="block text-xs font-black text-[#566166]/60 uppercase tracking-widest pl-1">Confirm Account Number</label>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Confirm Account Number</label>
                         <input
                           type="text"
                           inputMode="numeric"
@@ -431,21 +419,21 @@ export default function SettingsPage() {
                           value={bankForm.confirmAccount}
                           onChange={e => { setBankForm(f => ({ ...f, confirmAccount: e.target.value.replace(/\D/g, "") })); setBankError(""); }}
                           onPaste={e => e.preventDefault()}
-                          className="w-full bg-[#f7f9fb]/50 border-none border-b-2 border-[#e1e9ee] focus:border-[#545f73] focus:ring-0 px-1 py-3 text-[#2a3439] font-bold tracking-widest transition-all placeholder:text-[#a9b4b9]/40"
+                          className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 font-bold tracking-widest transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 placeholder:text-slate-300 shadow-sm"
                         />
                       </div>
 
                       <div className="space-y-2 md:col-span-2">
-                        <label className="block text-xs font-black text-[#566166]/60 uppercase tracking-widest pl-1">IFSC Code</label>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest pl-1">IFSC Code</label>
                         <input
                           type="text"
                           maxLength={11}
                           placeholder="e.g. SBIN0001234"
                           value={bankForm.ifsc}
                           onChange={e => { setBankForm(f => ({ ...f, ifsc: e.target.value.toUpperCase() })); setBankError(""); }}
-                          className="w-full bg-[#f7f9fb]/50 border-none border-b-2 border-[#e1e9ee] focus:border-[#545f73] focus:ring-0 px-1 py-3 text-[#2a3439] font-bold font-mono tracking-widest transition-all placeholder:text-[#a9b4b9]/40"
+                          className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 font-bold font-mono tracking-widest transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 placeholder:text-slate-300 shadow-sm"
                         />
-                        <p className="text-xs text-[#566166]/60 pl-1">11-character code found on your cheque book or net banking.</p>
+                        <p className="text-xs text-slate-400 pl-1 mt-1">11-character code found on your cheque book or net banking.</p>
                       </div>
                     </div>
 

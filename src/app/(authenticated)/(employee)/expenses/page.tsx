@@ -6,6 +6,7 @@ import { ExpenseCard } from "@/components/ExpenseCard";
 import { ExpenseRow } from "@/components/ExpensesTable";
 import { AuditAgent } from "@/components/AuditAgent";
 import { useCopilotAction } from "@copilotkit/react-core";
+import { CircularLoader } from "@/components/CircularLoader";
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
@@ -92,7 +93,7 @@ export default function ExpensesPage() {
           />
           <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: "12px" }}>
             {loading ? (
-              [1,2,3,4].map(i => <div key={i} className="shimmer" style={{ height: "90px" }} />)
+              <CircularLoader message="Loading your expense records..." />
             ) : (
               Array.isArray(expenses) && expenses.map(e => (
                 <ExpenseCard 

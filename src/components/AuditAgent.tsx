@@ -33,6 +33,20 @@ interface AuditAgentProps {
   onSubmitForApproval?: () => Promise<void>;
 }
 
+function stripEmbeddings<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(stripEmbeddings) as unknown as T;
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== "embedding")
+        .map(([key, val]) => [key, stripEmbeddings(val)])
+    ) as unknown as T;
+  }
+  return value;
+}
+
 /* ─────────────────────────────────────
    CSV / Excel download utility
 ───────────────────────────────────── */
@@ -239,9 +253,9 @@ function ReimbursableCard({ data }: { data: any }) {
 function SummaryCard({ data, onDownload }: { data: any; onDownload: () => void }) {
   return (
     <div className="ea-card">
-      <div className="ea-card-header" style={{ background: "#F5F3FF", borderColor: "#DDD6FE" }}>
-        <FileText size={13} color="#7C3AED" />
-        <span style={{ color: "#4C1D95", fontWeight: 600, fontSize: 12 }}>Application Summary</span>
+      <div className="ea-card-header" style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }}>
+        <FileText size={13} color="#2563EB" />
+        <span style={{ color: "#1E40AF", fontWeight: 600, fontSize: 12 }}>Application Summary</span>
       </div>
       <div className="ea-card-body">
         <div className="ea-summary-grid">
@@ -289,9 +303,9 @@ export function AuditAgent({
   const recognitionRef = useRef<any>(null);
 
   /* ── Readable context ── */
-  useCopilotReadable({ description: "Current expense application", value: application });
-  useCopilotReadable({ description: "All expenses in this application", value: expenses });
-  useCopilotReadable({ description: "Currently selected expense record", value: selectedRecord });
+useCopilotReadable({ description: "Current expense application", value: stripEmbeddings(application) });
+useCopilotReadable({ description: "All expenses in this application", value: stripEmbeddings(expenses) });
+useCopilotReadable({ description: "Currently selected expense record", value: stripEmbeddings(selectedRecord) });
 
   /* ── Actions ── */
 
@@ -461,28 +475,45 @@ export function AuditAgent({
 
         /* ── Trigger ── */
         .ea-trigger {
-          position: fixed; bottom: 28px; right: 28px; z-index: 9999;
-          display: flex; align-items: center; gap: 10px;
-          padding: 0 20px 0 6px; height: 52px;
-          background: #0F172A; border: none; border-radius: 999px;
+          position: fixed;
+          top: 50%;
+          right: -12px;
+          transform: translateY(-50%);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 24px 10px 14px;
+          background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-right: none;
+          border-radius: 20px 0 0 20px;
           cursor: pointer;
-          box-shadow: 0 8px 28px rgba(15,23,42,.28), 0 2px 8px rgba(15,23,42,.16);
-          transition: transform .2s ease, box-shadow .2s ease;
+          box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
           font-family: 'Figtree', sans-serif;
         }
         .ea-trigger:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 36px rgba(15,23,42,.32), 0 4px 12px rgba(15,23,42,.18);
+          right: 0;
+          padding-left: 18px;
+          background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+          box-shadow: -6px 0 32px rgba(124, 58, 237, 0.2);
         }
         .ea-trigger-icon {
-          width: 40px; height: 40px; background: #7C3AED; border-radius: 50%;
+          width: 38px; height: 38px; 
+          background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+          border-radius: 50%;
           display: flex; align-items: center; justify-content: center;
-          flex-shrink: 0; transition: background .2s;
+          flex-shrink: 0; transition: transform 0.3s ease;
+          box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
         }
-        .ea-trigger:hover .ea-trigger-icon { background: #6D28D9; }
+        .ea-trigger:hover .ea-trigger-icon { 
+          transform: scale(1.1) rotate(5deg);
+        }
         .ea-trigger-label {
-          font-size: 13px; font-weight: 600; color: white;
-          letter-spacing: .01em; white-space: nowrap;
+          font-size: 14px; font-weight: 700; color: white;
+          letter-spacing: -0.01em; white-space: nowrap;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
         .ea-trigger-badge {
           position: absolute; top: -3px; right: -3px;
@@ -520,7 +551,7 @@ export function AuditAgent({
         }
         .ea-header-left { display: flex; align-items: center; gap: 12px; }
         .ea-avatar {
-          width: 32px; height: 32px; border-radius: 8px; background: #7C3AED;
+          width: 32px; height: 32px; border-radius: 8px; background: #2563EB;
           display: flex; align-items: center; justify-content: center; flex-shrink: 0;
         }
         .ea-header-name {
@@ -574,7 +605,7 @@ export function AuditAgent({
           font-size: 13.5px !important; line-height: 1.6 !important;
         }
         .ea-body .copilot-kit-message-row--user .copilot-kit-user-message {
-          background: #7C3AED !important; color: #FFFFFF !important;
+          background: #2563EB !important; color: #FFFFFF !important;
           border-radius: 12px 12px 0 12px !important;
           font-size: 13.5px !important; line-height: 1.6 !important;
         }
@@ -596,13 +627,13 @@ export function AuditAgent({
         }
         .ea-body .copilot-kit-input:focus { background: #ECEFF1 !important; outline: none !important; }
         .ea-body .copilot-kit-send-button {
-          background: #7C3AED !important; border-radius: 50% !important;
+          background: #2563EB !important; border-radius: 50% !important;
           width: 32px !important; height: 32px !important; min-width: 32px !important;
           color: white !important; display: flex !important;
           align-items: center !important; justify-content: center !important;
           transition: transform .2s !important;
         }
-        .ea-body .copilot-kit-send-button:hover { transform: scale(1.05); background: #6D28D9 !important; }
+        .ea-body .copilot-kit-send-button:hover { transform: scale(1.05); background: #1D4ED8 !important; }
 
         /* ── Mic ── */
         .ea-input-extras {
@@ -739,9 +770,6 @@ export function AuditAgent({
             ? <ChevronDown size={18} color="white" />
             : <Sparkles size={18} color="white" />}
         </div>
-        <span className="ea-trigger-label">
-          {isOpen ? "Close Agent" : "Audit Agent"}
-        </span>
         <div className="ea-trigger-badge" />
       </button>
 

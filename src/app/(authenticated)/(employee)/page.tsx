@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { CircularLoader } from "@/components/CircularLoader";
 
 export default function EmployeeDashboard() {
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
@@ -58,8 +59,8 @@ export default function EmployeeDashboard() {
       {/* ── Page Header ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-extrabold text-zinc-900 tracking-tight font-outfit">
-            Welcome back, <span className="text-zinc-500 font-medium">{firstName}</span>
+          <h1 className="text-5xl font-extrabold text-zinc-900 tracking-tight font-outfit">
+            Welcome back, <span className="text-5xl">{firstName}</span>
           </h1>
           <p className="text-zinc-500 font-medium text-[15px]">
             You have <span className="text-zinc-900 font-bold">{stats.pending}</span> expenses awaiting audit.
@@ -118,9 +119,7 @@ export default function EmployeeDashboard() {
 
           <div className="flex flex-col gap-3">
             {loading ? (
-              [1, 2, 3].map((i) => (
-                <div key={i} className="h-24 w-full bg-zinc-100 animate-pulse rounded-xl border border-zinc-200" />
-              ))
+              <CircularLoader message="Fetching your latest submissions..." />
             ) : expenses.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 bg-zinc-50/50 rounded-2xl border-2 border-dashed border-zinc-200">
                 <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mb-4 text-zinc-400">
@@ -142,7 +141,7 @@ export default function EmployeeDashboard() {
 
 function StatCard({ label, value, description, icon, variant, loading }: any) {
   const iconColors = {
-    primary: "bg-violet-50 text-violet-600",
+    primary: "bg-blue-50 text-blue-600",
     success: "bg-emerald-50 text-emerald-600",
     warning: "bg-amber-50 text-amber-600",
     zinc: "bg-zinc-100 text-zinc-600",
