@@ -3,6 +3,12 @@ import { CopilotKit } from "@copilotkit/react-core";
 import { Toaster } from "sonner";
 import "./globals.css";
 import "@copilotkit/react-ui/styles.css";
+import { Geist, Inter } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const interHeading = Inter({subsets:['latin'],variable:'--font-heading'});
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Expify Agent — Intelligent Expense Management",
@@ -13,7 +19,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", geist.variable, interHeading.variable)}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link

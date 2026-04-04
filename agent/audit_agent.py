@@ -18,7 +18,7 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
-from google.adk.tools import ToolContext
+from google.adk.tools import ToolContext, google_search, AgentTool
 from google.genai import types
 from embedding_service import embed_expense_after_audit
 
@@ -624,6 +624,14 @@ def audit_after_model(
 # AGENT
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Sub-agent dedicated to Google Search (single-tool requirement)
+_audit_search_agent = LlmAgent(
+    name="AuditSearchAgent",
+    model="gemini-2.5-flash",
+    instruction="Search the web using Google Search and return the results. Always cite sources.",
+    tools=[google_search],
+)
+
 audit_agent = LlmAgent(
     name="AuditAgent",
     model="gemini-2.5-flash",
@@ -631,7 +639,7 @@ audit_agent = LlmAgent(
         Audit expense claims using the pre-computed facts in the system prompt.
         Apply all 9 mismatch rules. Call set_audit_result exactly once with your final verdict.
     """,
-    tools=[set_audit_result],
+    tools=[set_audit_result, AgentTool(agent=_audit_search_agent)],
     before_agent_callback=audit_before_agent,
     before_model_callback=audit_before_model,
     after_model_callback=audit_after_model,

@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from google.adk.agents import LlmAgent
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
 from composio import Composio
+from google.adk.tools import google_search, AgentTool, ToolContext
 from composio_google_adk import GoogleAdkProvider
 
 load_dotenv()
@@ -81,6 +82,15 @@ def _build_enterprise_agent(admin_user_id: str) -> LlmAgent:
         generate_dashboard, save_dashboard,
     )
 
+    # Sub-agent dedicated to Google Search (ADK requires google_search
+    # to be the ONLY tool in its agent)
+    _search_sub_agent = LlmAgent(
+        name="WebSearchAgent",
+        model="gemini-2.5-flash",
+        instruction="Search the web using Google Search and return the results. Always cite sources.",
+        tools=[google_search],
+    )
+
     base_tools = [
         resolve_user, get_user_stats, compare_two_users,
         semantic_search_expenses, get_applications, get_policies,
@@ -88,6 +98,7 @@ def _build_enterprise_agent(admin_user_id: str) -> LlmAgent:
         get_mismatch_breakdown, search_expenses_by_amount, get_chat_history,
         get_users, get_flagged_expenses, get_expenses_detail,
         generate_dashboard, save_dashboard,
+        AgentTool(agent=_search_sub_agent),
     ]
 
     composio_tools = _load_composio_tools(admin_user_id) if admin_user_id else []

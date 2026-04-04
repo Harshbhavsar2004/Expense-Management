@@ -79,7 +79,7 @@ export default function ChatInput({
   return (
     <div style={{
       padding: "10px 24px 18px",
-      background: "#000000",
+      background: "#212121",
       borderTop: "1px solid rgba(255,255,255,0.05)",
       flexShrink: 0,
       fontFamily: "var(--font-sans, 'Geist', sans-serif)",
@@ -152,7 +152,7 @@ export default function ChatInput({
         <div
           className="aib-input-wrap"
           style={{
-            background: "rgba(255,255,255,0.03)",
+            background: "#2f2f2f",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: "14px",
             padding: "9px 10px",

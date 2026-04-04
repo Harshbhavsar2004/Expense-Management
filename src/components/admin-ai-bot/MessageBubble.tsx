@@ -34,6 +34,12 @@ function extractDashboardLinks(content: string): { id: string; title: string; ra
 }
 
 export default function MessageBubble({ msg, idx }: MessageBubbleProps) {
+  // Hide voice assistant messages that have no content yet (prevents "Thinking…" spam)
+  // The thinking state is already shown in VoiceAgentPanel's pill widget
+  if (msg.isVoice && msg.role === "assistant" && !msg.content?.trim()) {
+    return null;
+  }
+
   const dashboardSpec = msg.role === "assistant" ? tryParseDashboard(msg.content) : null;
   const dashboardLinks = msg.role === "assistant" ? extractDashboardLinks(msg.content) : [];
 

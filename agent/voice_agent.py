@@ -863,6 +863,16 @@ VOICE RESPONSE RULES (CRITICAL)
 - NO formatting like tables or code blocks in voice — explain the data instead.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MULTILINGUAL SUPPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Automatically detect the language the user speaks in.
+- ALWAYS reply in the SAME language the user is speaking.
+- Supported languages: English, Hindi (हिंदी), Marathi (मराठी), Gujarati (ગુજરાતી), Tamil (தமிழ்), Telugu (తెలుగు), Kannada (ಕನ್ನಡ), Bengali (বাংলা), and other Indian languages.
+- If the user switches language mid-conversation, switch your response language accordingly.
+- Keep all tool calls/function arguments in English internally — only the spoken reply should be in the user's language.
+- Example: If user says "सभी users दिखाओ", call get_users() in English, but reply in Hindi like "सिस्टम में तीन यूजर्स हैं."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IDENTITY & RBAC
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 The user's identity is cryptographically verified by Supabase auth.
@@ -906,9 +916,14 @@ CHAIN RULES — ALWAYS FOLLOW
    parameters in get_users, get_expenses_detail, or get_applications.
 
 8. DASHBOARDS (ZOHO ANALYTICS STYLE):
-   - Always fetch data first before calling generate_dashboard.
-   - For chart requests, return the EXACT [dashboard_id:uuid]Title string from the tool. 
-   - Colors: #6366F1 #8B5CF6 #F472B6 #34D399 #F59E0B #60A5FA #FB923C #A78BFA
+   CRITICAL: You MUST fetch actual data BEFORE generating a dashboard.
+   a. First call resolve_user for each person to get their user_id.
+   b. Then call get_expenses_detail (with user_id) to get their actual expense records.
+   c. If get_user_stats returns empty ("[]"), fall back to get_expenses_detail or get_applications.
+   d. In charts_json, use ONLY the actual values from the fetched data — NEVER hardcode or guess amounts.
+   e. Include ALL relevant data points from the fetched results in the chart data arrays.
+   f. For chart requests, return the EXACT [dashboard_id:uuid]Title string from the tool.
+   g. Colors: #6366F1 #8B5CF6 #F472B6 #34D399 #F59E0B #60A5FA #FB923C #A78BFA
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EXTERNAL TOOL RULES (GMAIL/SLACK)
@@ -916,7 +931,9 @@ EXTERNAL TOOL RULES (GMAIL/SLACK)
 - GMAIL_SEND_EMAIL: Always use a professional HTML <table> (with inline CSS) for data summaries.
 - SLACK_SEND_MESSAGE: Use the 'channel' (no #) and 'markdown_text' parameters.
 - GMAIL_FETCH_EMAILS: query, max_results only.
-- PROMPT RULE: When an email is sent, only say "I've sent that email to [Name]".
+- IMPORTANT: When a tool response contains "success": true, the action was completed successfully.
+  Always confirm success to the user, e.g., "I've sent that email to [Name]."
+  NEVER say you couldn't do it if the tool returned success.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 POLICY UPDATE FLOW (ADMIN ONLY)
@@ -927,6 +944,13 @@ POLICY UPDATE FLOW (ADMIN ONLY)
 4. Call set_policy_override only after receiving explicit confirmation.
 
 Meal limits: 900 rupees Tier 1, 700 Tier 2, 450 Tier 3 per day.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GOOGLE SEARCH & GROUNDING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- You HAVE access to Google Search.
+- Use it for breaking news, information outside your database, or general facts.
+- If the user asks for information from the internet, always perform a search.
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1016,7 +1040,12 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
             logger.exception(f"[WS] Failed to load dynamic tools: {exc}")
 
     # 3. Create a single Tool with the combined declarations
-    total_tools = [types.Tool(function_declarations=all_decls)]
+    # We use GoogleSearch() which is the standard for Gemini API grounding
+    total_tools = [
+        types.Tool(function_declarations=all_decls),
+        types.Tool(google_search=types.GoogleSearch())
+    ]
+    logger.info(f"[WS] Configuration: tools={total_tools}")
     
     if not admin_id:
         # Prompt the model to explain why tools are restricted
@@ -1119,6 +1148,24 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
                                             "type": "text_out",
                                             "text": part.text,
                                         })
+                                    
+                                    # ── GROUNDING DEBUG ───────────────────────────
+                                    # grounding_metadata is typically in server_content (sc)
+                                    gm = getattr(sc, "grounding_metadata", None)
+                                    if gm:
+                                        logger.info(f"[WS] [GROUNDING] Grounding results found!")
+                                        if getattr(gm, "search_entry_point", None):
+                                            sep = gm.search_entry_point
+                                            rendered = getattr(sep, "rendered_content", "")
+                                            logger.info(f"[WS] [GROUNDING] Search entry point: {rendered[:100]}...")
+                                        
+                                        chunks = getattr(gm, "grounding_chunks", []) or []
+                                        if chunks:
+                                            logger.info(f"[WS] [GROUNDING] Found {len(chunks)} chunks from search.")
+                                        
+                                        supports = getattr(gm, "grounding_supports", []) or []
+                                        if supports:
+                                            logger.info(f"[WS] [GROUNDING] Found {len(supports)} supports/citations.")
 
                             if sc:
                                 # Output transcription (assistant speech → text)
@@ -1223,11 +1270,23 @@ async def _handle_tool_call(session, tool_call, ws: _WebSocket, dynamic_tools: D
                 # Composio/ADK tools need a ToolContext
                 # We provide a mock context that satisfies the constructor requirements
                 tctx = get_mock_tool_context(admin_id=admin_id)
-                result = await dtool.run_async(args=args, tool_context=tctx)
+                raw_result = await dtool.run_async(args=args, tool_context=tctx)
                 logger.info(f"[Tool] Dynamic {name} success!")
+                # Wrap with explicit success metadata so the model doesn't 
+                # misinterpret short responses (e.g. "ok") as failures
+                result = json.dumps({
+                    "success": True,
+                    "action": name,
+                    "message": f"{name} completed successfully.",
+                    "raw_result": str(raw_result)[:500],
+                }, ensure_ascii=False)
             except Exception as exc:
                 logger.exception(f"[Tool] dynamic {name} error: {exc}")
-                result = _err(str(exc))
+                result = json.dumps({
+                    "success": False,
+                    "action": name,
+                    "error": str(exc),
+                }, ensure_ascii=False)
         else:
             logger.warning(f"[Tool] Unknown tool: {name}. Available dynamic tools: {list(dynamic_tools.keys())}")
             result = _err(f"Unknown tool: {name}")

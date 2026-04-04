@@ -249,6 +249,17 @@ export default function AdminAIBot() {
     args?: any;
   }) => {
     const activeId = currentIdRef.current;
+
+    // Handle turn_complete (is_final with empty content) — just reset ref, don't create a message
+    if (msg.is_final && !msg.content?.trim()) {
+      lastVoiceMsgRef.current = null;
+      return;
+    }
+
+    // Skip entirely empty assistant messages (tool_thinking creates these)
+    if (msg.role === "assistant" && !msg.content?.trim() && !msg.is_chunk) {
+      return;
+    }
     
     setSessions(prev => {
       let currentSessions = [...prev];
@@ -309,8 +320,8 @@ export default function AdminAIBot() {
           }
           return m;
         });
-      } else {
-        // New bubble
+      } else if (displayContent?.trim()) {
+        // New bubble — only create if there is actual content
         const newMsgId = `voice-${Date.now()}`;
         const chatMsg: ChatMessage = {
           id: newMsgId,
@@ -559,7 +570,7 @@ export default function AdminAIBot() {
           className={isAnimating ? "aib-overlay-in" : "aib-overlay-out"}
           style={{
             position: "fixed", inset: 0, zIndex: 9999,
-            background: "#0a0a0c",
+            background: "#212121",
             display: "flex", flexDirection: "column",
             fontFamily: "'Sora', sans-serif",
           }}
@@ -568,7 +579,7 @@ export default function AdminAIBot() {
           <div className="aib-topbar" style={{
             height: "56px", display: "flex", alignItems: "center",
             justifyContent: "space-between", padding: "0 16px 0 0",
-            flexShrink: 0, background: "rgba(10,10,12,0.98)",
+            flexShrink: 0, background: "rgba(33,33,33,0.98)",
             backdropFilter: "blur(12px)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -690,7 +701,7 @@ export default function AdminAIBot() {
                 style={{
                   width: "320px",
                   flexShrink: 0,
-                  background: "#0c0c0f",
+                  background: "#171717",
                   display: "flex", flexDirection: "column",
                   overflow: "hidden",
                 }}
