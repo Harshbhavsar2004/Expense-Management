@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Users } from "lucide-react";
+import { 
+  Users, 
+  UserCheck, 
+  CreditCard, 
+  ShieldCheck,
+  TrendingUp,
+  Mail,
+  Phone,
+  ChevronRight,
+  IndianRupee,
+  CheckCircle2,
+  AlertCircle,
+  ArrowUpRight
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 interface UserRow {
   id: string;
@@ -41,8 +56,8 @@ export default function EmployeesPage() {
   }, []);
 
   const employees = useMemo(() => {
-    const employees = users.filter(u => u.role !== "admin");
-    return employees.map(u => {
+    const emps = users.filter(u => u.role !== "admin");
+    return emps.map(u => {
       const userExpenses = expenses.filter(e => e.user_id === u.id);
       const total = userExpenses.reduce((s, e) => s + (e.claimed_amount_numeric || 0), 0);
       const verified = userExpenses.filter(e => e.verified).length;
@@ -51,88 +66,145 @@ export default function EmployeesPage() {
   }, [users, expenses]);
 
   return (
-    <div style={{ padding: "28px 32px", maxWidth: "1200px" }}>
-      <div style={{ marginBottom: "28px" }}>
-        <h2 style={{ margin: "0 0 4px", fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", fontFamily: "'DM Sans', sans-serif" }}>
-          Employees
-        </h2>
-        <p style={{ margin: 0, fontSize: "14px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>
-          {loading ? "Loading…" : `${employees.length} employee${employees.length !== 1 ? "s" : ""} registered`}
-        </p>
+    <div className="p-8 max-w-7xl mx-auto space-y-10">
+      {/* ── Page Header ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900">
+            Employee <span className="text-blue-900">Directory</span>
+          </h1>
+          <p className="text-zinc-500 font-medium max-w-md">
+            Manage your workforce, track spending patterns, and monitor audit compliance across the organization.
+          </p>
+        </div>
       </div>
 
-      <div className="premium-card" style={{ overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 130px 110px 100px 110px", gap: "16px", padding: "12px 20px", background: "var(--bg-tertiary)", borderBottom: "1px solid var(--border)", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", fontFamily: "'Inter', sans-serif" }}>
-          <span>Employee</span>
-          <span>Claims</span>
-          <span>Total Claimed</span>
-          <span>Verified</span>
-          <span>Compliance</span>
-          <span>Bank</span>
+      {/* ── Employees Table ── */}
+      <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-zinc-50/50 border-b border-zinc-200">
+                <th className="px-6 py-4 text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Employee</th>
+                <th className="px-6 py-4 text-[11px] font-bold text-zinc-500 uppercase tracking-widest text-center">Claims</th>
+                <th className="px-6 py-4 text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Total Claimed</th>
+                <th className="px-6 py-4 text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Audit Score</th>
+                <th className="px-6 py-4 text-[11px] font-bold text-zinc-500 uppercase tracking-widest text-right">Banking</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td colSpan={5} className="px-6 py-10" />
+                  </tr>
+                ))
+              ) : employees.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-20 text-center text-zinc-400">
+                    <div className="flex flex-col items-center gap-3">
+                      <Users size={48} className="opacity-10" />
+                      <p className="font-bold">No employees found</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <AnimatePresence mode="popLayout">
+                  {employees.map((emp, i) => {
+                    const compliancePct = emp.count > 0 ? Math.round((emp.verified / emp.count) * 100) : 0;
+                    const hue = (emp.full_name.charCodeAt(0) * 7) % 360;
+                    
+                    return (
+                      <motion.tr 
+                        key={emp.id}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="group hover:bg-zinc-50/80 transition-all duration-200 cursor-pointer"
+                      >
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-4">
+                            <div 
+                              className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-sm"
+                              style={{ background: `hsl(${hue}, 60%, 52%)` }}
+                            >
+                              {emp.full_name[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-zinc-900 truncate flex items-center gap-2">
+                                {emp.full_name}
+                                {emp.bank_verified && <CheckCircle2 size={14} className="text-emerald-500" />}
+                              </p>
+                              <div className="flex items-center gap-3 text-[11px] text-zinc-500 font-bold mt-0.5">
+                                <span className="flex items-center gap-1"><Mail size={12} /> {emp.email || "—"}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col items-center">
+                            <span className="text-sm font-extrabold text-zinc-900">{emp.count}</span>
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Total Claims</span>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-extrabold text-zinc-900">₹{emp.total.toLocaleString("en-IN")}</span>
+                            <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 uppercase tracking-tighter">
+                              <TrendingUp size={10} /> {emp.verified} Verified
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col gap-2 w-32">
+                            <div className="flex justify-between items-center text-[10px] font-bold uppercase text-zinc-500">
+                              <span>Compliance</span>
+                              <span className={cn(
+                                compliancePct > 70 ? "text-emerald-600" : compliancePct > 40 ? "text-amber-600" : "text-rose-600"
+                              )}>
+                                {compliancePct}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${compliancePct}%` }}
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-1000",
+                                  compliancePct > 70 ? "bg-emerald-500" : compliancePct > 40 ? "bg-amber-500" : "bg-rose-500"
+                                )}
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-5 text-right">
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-200 bg-white group-hover:border-zinc-300 transition-colors shadow-sm">
+                            {emp.bank_verified ? (
+                              <>
+                                <CheckCircle2 size={12} className="text-emerald-600" />
+                                <span className="text-[11px] font-bold text-zinc-700 capitalize">Verified</span>
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle size={12} className="text-amber-600" />
+                                <span className="text-[11px] font-bold text-zinc-700 capitalize">Pending Bank</span>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </AnimatePresence>
+              )}
+            </tbody>
+          </table>
         </div>
-
-        {loading ? (
-          <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            {[1, 2, 3, 4].map(i => <div key={i} className="shimmer" style={{ height: "60px", borderRadius: "8px" }} />)}
-          </div>
-        ) : employees.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px", color: "var(--text-muted)" }}>
-            <Users size={36} style={{ opacity: 0.3, marginBottom: "12px" }} />
-            <p style={{ margin: 0 }}>No employees found</p>
-          </div>
-        ) : (
-          employees.map(emp => {
-            const compliancePct = emp.count > 0 ? Math.round((emp.verified / emp.count) * 100) : 0;
-            const hue = (emp.full_name.charCodeAt(0) * 7) % 360;
-            return (
-              <div
-                key={emp.id}
-                style={{ display: "grid", gridTemplateColumns: "1fr 100px 130px 110px 100px 110px", gap: "16px", padding: "14px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", transition: "background 0.15s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: `hsl(${hue}, 60%, 52%)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700, color: "white", flexShrink: 0 }}>
-                    {emp.full_name[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-primary)", fontFamily: "'Inter', sans-serif" }}>{emp.full_name}</div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>{emp.email || emp.phone || "—"}</div>
-                  </div>
-                </div>
-
-                <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'Inter', sans-serif" }}>{emp.count}</span>
-
-                <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums", fontFamily: "'Inter', sans-serif" }}>
-                  ₹{emp.total.toLocaleString("en-IN")}
-                </span>
-
-                <span style={{ fontSize: "13px", color: "var(--success)", fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
-                  {emp.verified} / {emp.count}
-                </span>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <div style={{ flex: 1, height: "5px", background: "var(--bg-tertiary)", borderRadius: "9999px" }}>
-                    <div style={{ height: "100%", width: `${compliancePct}%`, background: compliancePct > 70 ? "var(--success)" : compliancePct > 40 ? "var(--warning)" : "var(--danger)", borderRadius: "9999px" }} />
-                  </div>
-                  <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>{compliancePct}%</span>
-                </div>
-
-                <div>
-                  {emp.bank_verified ? (
-                    <span style={{ fontSize: "11px", fontWeight: 600, padding: "3px 8px", borderRadius: "20px", background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.2)" }}>
-                      Verified
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: "11px", fontWeight: 600, padding: "3px 8px", borderRadius: "20px", background: "rgba(245,158,11,0.1)", color: "#D97706", border: "1px solid rgba(245,158,11,0.2)" }}>
-                      Not Added
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
       </div>
     </div>
   );

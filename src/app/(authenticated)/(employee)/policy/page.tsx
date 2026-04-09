@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  UtensilsCrossed, Hotel, PlaneTakeoff,
-  ShieldCheck, CheckCircle, XCircle,
-  Clock, Calendar, FileBadge,
-} from "lucide-react";
+import { UtensilsCrossed, Hotel, PlaneTakeoff, ShieldCheck, CheckCircle, XCircle, Clock, Calendar, FileBadge } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Policy = {
   has_active_override: boolean;
@@ -57,7 +54,11 @@ export default function PolicyPage() {
 
   if (loading) {
     return (
-      <div className="p-7 w-full space-y-4">
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="p-7 w-full space-y-4"
+      >
         <div className="h-12 rounded-xl bg-slate-100 animate-pulse w-64" />
         <div className="grid grid-cols-3 gap-3">
           {[0, 1, 2].map((i) => (
@@ -69,7 +70,7 @@ export default function PolicyPage() {
             <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" style={{ opacity: 1 - i * 0.15 }} />
           ))}
         </div>
-      </div>
+      </motion.div>
     );
   }
 
@@ -103,7 +104,11 @@ export default function PolicyPage() {
   ];
 
   return (
-    <div className="w-full p-7 pb-20">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="w-full p-7 pb-20"
+    >
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -131,7 +136,11 @@ export default function PolicyPage() {
 
       {/* Override Banner */}
       {isOverrideActive && (
-        <div className="mb-5 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-center gap-4">
+        <motion.div 
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="mb-5 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-center gap-4 overflow-hidden"
+        >
           <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
             <Clock size={16} />
           </div>
@@ -145,11 +154,16 @@ export default function PolicyPage() {
               {policy.override_reason && <span className="ml-1 opacity-80">· {policy.override_reason}</span>}
             </p>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Meal Allowances — Table style */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4"
+      >
         <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
@@ -161,7 +175,6 @@ export default function PolicyPage() {
             </div>
           </div>
         </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
           {mealTiers.map((tier, i) => (
             <div key={i} className="px-5 py-4 flex items-center justify-between sm:flex-col sm:items-start sm:justify-start gap-2">
@@ -177,13 +190,18 @@ export default function PolicyPage() {
             </div>
           ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* Travel & Hotel — side by side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
 
         {/* Travel */}
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white border border-slate-200 rounded-xl overflow-hidden"
+        >
           <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
@@ -214,10 +232,15 @@ export default function PolicyPage() {
               <span className="text-base font-bold text-blue-600 font-mono">{fmt(travelLimit)}</span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Hotel */}
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white border border-slate-200 rounded-xl overflow-hidden"
+        >
           <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
@@ -248,11 +271,16 @@ export default function PolicyPage() {
               <span className="text-base font-bold text-blue-600 font-mono">{fmt(hotelLimit)}</span>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* General Rules */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="bg-white border border-slate-200 rounded-xl overflow-hidden"
+      >
         <div className="px-5 py-4 flex items-center gap-3 border-b border-slate-100">
           <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
             <FileBadge size={16} />
@@ -276,8 +304,8 @@ export default function PolicyPage() {
             <span className="text-sm text-slate-600">{policy.custom_notes || "No additional notes"}</span>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-    </div>
+    </motion.div>
   );
 }

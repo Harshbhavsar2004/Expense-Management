@@ -5,7 +5,7 @@ import { X, MicOff, Mic, Bot, Clock, Volume2, Wifi, Loader2 } from "lucide-react
 import { supabase } from "@/lib/supabase";
 import type { DashboardSpec } from "@/types";
 
-const AGENT = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const AGENT = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8000";
 type SessionState = "idle" | "connecting" | "connected" | "error";
 
 interface VoiceMsg {

@@ -9,67 +9,36 @@ import {
   IconHistory,
   IconMessageCircle,
   IconSettings,
-  IconChevronLeft,
-  IconChevronRight,
-  IconSearch,
-  IconBell,
   IconLogout,
-  IconUser,
   IconShieldCheck,
   IconCoin,
+  IconStack2,
 } from "@tabler/icons-react";
-import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+
+const SIDEBAR_BG = "#000D4D"; // Premium Midnight Blue
 
 const navItems = [
-  {
-    id: "dashboard",
-    icon: <IconLayoutDashboard size={18} stroke={1.8} />,
-    label: "Dashboard",
-    href: "/",
-  },
-  {
-    id: "applications",
-    icon: <IconHistory size={18} stroke={1.8} />,
-    label: "My Reports",
-    href: "/applications",
-  },
-  {
-    id: "payouts",
-    icon: <IconCoin size={18} stroke={1.8} />,
-    label: "Payments",
-    href: "/payouts",
-  },
-  {
-    id: "chat",
-    icon: <IconMessageCircle size={18} stroke={1.8} />,
-    label: "Audit AI",
-    href: "/chat",
-  },
-  {
-    id: "policy",
-    icon: <IconShieldCheck size={18} stroke={1.8} />,
-    label: "Policy",
-    href: "/policy",
-  },
-  {
-    id: "settings",
-    icon: <IconSettings size={18} stroke={1.8} />,
-    label: "Settings",
-    href: "/settings",
-  },
+  { id: "dashboard",    Icon: IconLayoutDashboard, label: "Dashboard", href: "/" },
+  { id: "applications", Icon: IconHistory,          label: "My Reports", href: "/applications" },
+  { id: "payouts",      Icon: IconCoin,             label: "Payments",   href: "/payouts" },
+  { id: "chat",         Icon: IconMessageCircle,    label: "Audit AI",   href: "/chat" },
+  { id: "policy",       Icon: IconShieldCheck,      label: "Policy",     href: "/policy" },
+  { id: "settings",     Icon: IconSettings,         label: "Settings",   href: "/settings" },
 ];
+
+const FADE_EASE = { duration: 0.16, ease: [0.4, 0, 0.2, 1] as const };
 
 function EmployeeSidebarInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [user,         setUser]         = useState<any>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await fetch("/api/user/profile");
+        const res  = await fetch("/api/user/profile");
         const data = await res.json();
         if (res.ok) setUser(data);
       } catch (err) {
@@ -81,10 +50,10 @@ function EmployeeSidebarInner({ children }: { children: React.ReactNode }) {
 
   const activeId =
     navItems.find(
-      (item) =>
-        pathname === item.href ||
-        (item.href !== "/" && pathname.startsWith(item.href))
+      (item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
     )?.id || "dashboard";
+
+  const activeLabel = navItems.find((i) => i.id === activeId)?.label || "Dashboard";
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -92,613 +61,244 @@ function EmployeeSidebarInner({ children }: { children: React.ReactNode }) {
     window.location.href = "/login";
   };
 
-  const activeLabel =
-    navItems.find((i) => i.id === activeId)?.label || "Dashboard";
-
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#f1f5f9]">
-      {/* ─── Sidebar ─── */}
+    <div style={{ display: "flex", height: "100vh", width: "100%", overflow: "hidden", background: "#f7f9fb" }}>
+
+      {/* ── Sidebar ── */}
       <aside
+        id="employee-sidebar"
         style={{
-          width: isCollapsed ? "68px" : "236px",
-          transition: "width 280ms cubic-bezier(0.4, 0, 0.2, 1)",
-          background: "linear-gradient(180deg, #0d1526 0%, #0f1c35 100%)",
-          borderRight: "1px solid rgba(255,255,255,0.06)",
-          boxShadow: "4px 0 24px rgba(0,0,0,0.18)",
+          width: "256px",
+          flexShrink: 0,
+          background: SIDEBAR_BG,
+          display: "flex",
+          flexDirection: "column",
+          paddingTop: "16px",
+          paddingBottom: "32px",
+          position: "relative",
+          zIndex: 50,
+          boxShadow: "4px 0 24px rgba(33,89,226,0.25)",
         }}
-        className="relative flex flex-col shrink-0 overflow-hidden z-20"
       >
-        {/* Subtle grid texture overlay */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-
-        {/* Collapse button */}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          style={{
-            position: "absolute",
-            right: "-14px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            zIndex: 50,
-            width: "28px",
-            height: "44px",
-            background: "#2563eb",
-            border: "1.5px solid #1d4ed8",
-            borderRadius: "0 8px 8px 0",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "white",
-            cursor: "pointer",
-            boxShadow: "2px 0 12px rgba(37,99,235,0.4)",
-            transition: "background 150ms, transform 150ms",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "#1d4ed8")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "#2563eb")
-          }
-        >
-          {isCollapsed ? (
-            <IconChevronRight size={13} stroke={2.5} />
-          ) : (
-            <IconChevronLeft size={13} stroke={2.5} />
-          )}
-        </button>
-
-        {/* Brand */}
-        <div
-          className="relative z-10 flex items-center px-4 pt-6 pb-5"
-          style={{ minHeight: "72px" }}
-        >
-          {!isCollapsed ? (
-            <div
-              style={{
-                opacity: 1,
-                transition: "opacity 200ms 80ms",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "18px",
-                  fontWeight: 800,
-                  letterSpacing: "-0.02em",
-                  color: "#ffffff",
-                  lineHeight: 1,
-                  fontFamily: "'DM Sans', sans-serif",
-                }}
-              >
-                Expify
-              </div>
-              <div
-                style={{
-                  fontSize: "9px",
-                  fontWeight: 600,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "rgba(148,163,184,0.6)",
-                  marginTop: "4px",
-                }}
-              >
-                by Fristine Infotech
-              </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                width: "36px",
-                height: "36px",
-                background: "linear-gradient(135deg, #2563eb, #3b82f6)",
-                borderRadius: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 4px 12px rgba(37,99,235,0.35)",
-              }}
-            >
-              <span
-                style={{
-                  color: "white",
-                  fontWeight: 800,
-                  fontSize: "16px",
-                  lineHeight: 1,
-                }}
-              >
-                E
-              </span>
-            </div>
-          )}
+        {/* ── Brand ── */}
+        <div style={{ padding: "0 24px", marginBottom: "40px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{
+            width: "32px", height: "32px", flexShrink: 0,
+            background: "rgba(255,255,255,0.2)",
+            borderRadius: "8px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            border: "1px solid rgba(255,255,255,0.25)",
+          }}>
+            <IconStack2 size={16} stroke={2} color="white" />
+          </div>
+          <span style={{
+            fontSize: "20px",
+            fontWeight: 800,
+            letterSpacing: "-0.04em",
+            color: "#ffffff",
+            fontFamily: "var(--font-sans)",
+            whiteSpace: "nowrap",
+          }}>
+            Expify
+          </span>
         </div>
 
-        {/* Section label */}
-        <div className="relative z-10 px-4 mb-2">
-          {!isCollapsed ? (
-            <span
-              style={{
-                fontSize: "10px",
-                fontWeight: 700,
-                letterSpacing: "0.16em",
-                textTransform: "uppercase",
-                color: "rgba(100,116,139,0.8)",
-              }}
-            >
-              Employee Portal
-            </span>
-          ) : (
-            <div
-              style={{
-                height: "1px",
-                background: "rgba(255,255,255,0.06)",
-                margin: "0 4px",
-              }}
-            />
-          )}
-        </div>
-
-        {/* Nav items */}
-        <nav className="relative z-10 flex flex-col gap-1 px-3 mt-1">
-          {navItems.map((item) => {
+        {/* ── Nav ── */}
+        <nav style={{ flex: 1, padding: "0 12px", display: "flex", flexDirection: "column", gap: "2px" }}>
+          {navItems.map((item, i) => {
             const isActive = activeId === item.id;
+            const { Icon } = item;
             return (
-              <div key={item.id} className="relative group">
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ ...FADE_EASE, delay: i * 0.04 }}
+              >
                 <Link
                   href={item.href}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    height: "42px",
-                    borderRadius: "10px",
-                    padding: isCollapsed ? "0 12px" : "0 12px",
-                    gap: "10px",
-                    justifyContent: isCollapsed ? "center" : "flex-start",
+                    gap: "12px",
+                    padding: "11px 16px",
+                    borderRadius: "9999px",
                     textDecoration: "none",
                     position: "relative",
+                    background: isActive ? "rgba(255,255,255,0.18)" : "transparent",
+                    color: isActive ? "#ffffff" : "rgba(255,255,255,0.65)",
+                    fontWeight: isActive ? 600 : 500,
+                    fontSize: "13.5px",
+                    letterSpacing: "0.01em",
+                    fontFamily: "var(--font-sans)",
+                    transition: "background 140ms, color 140ms",
+                    whiteSpace: "nowrap",
                     overflow: "hidden",
-                    transition: "all 150ms cubic-bezier(0.4, 0, 0.2, 1)",
-                    background: isActive
-                      ? "linear-gradient(135deg, #2563eb, #3b82f6)"
-                      : "transparent",
-                    boxShadow: isActive
-                      ? "0 4px 16px rgba(37,99,235,0.3), inset 0 1px 0 rgba(255,255,255,0.1)"
-                      : "none",
-                    color: isActive ? "#ffffff" : "rgba(148,163,184,0.85)",
+                    boxShadow: isActive ? "inset 4px 0 0 rgba(255,255,255,0.9)" : "inset 4px 0 0 transparent",
                   }}
-                  className={cn(
-                    "nav-item",
-                    !isActive && "hover:nav-item-hover"
-                  )}
                   onMouseEnter={(e) => {
                     if (!isActive) {
-                      e.currentTarget.style.background =
-                        "rgba(255,255,255,0.06)";
-                      e.currentTarget.style.color = "rgba(226,232,240,1)";
+                      (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)";
+                      (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.9)";
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isActive) {
-                      e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.color = "rgba(148,163,184,0.85)";
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.65)";
                     }
                   }}
                 >
-                  {/* Active left accent bar */}
+                  {/* Sliding active highlight */}
                   {isActive && (
-                    <div
+                    <motion.div
+                      layoutId="nav-accent"
                       style={{
                         position: "absolute",
-                        left: 0,
-                        top: "8px",
-                        bottom: "8px",
-                        width: "3px",
-                        background: "rgba(255,255,255,0.5)",
-                        borderRadius: "0 3px 3px 0",
+                        inset: 0,
+                        borderRadius: "9999px",
+                        background: "rgba(255,255,255,0.18)",
+                        zIndex: 0,
                       }}
+                      transition={{ type: "spring", damping: 30, stiffness: 380 }}
                     />
                   )}
 
-                  {/* Icon */}
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {item.icon}
+                  <span style={{ position: "relative", zIndex: 1, flexShrink: 0, display: "flex", alignItems: "center" }}>
+                    <Icon size={20} stroke={isActive ? 2 : 1.8} />
                   </span>
 
-                  {/* Label */}
-                  {!isCollapsed && (
-                    <span
-                      style={{
-                        fontSize: "13.5px",
-                        fontWeight: isActive ? 600 : 500,
-                        letterSpacing: "-0.01em",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {item.label}
-                    </span>
-                  )}
-                </Link>
-
-                {/* Tooltip when collapsed */}
-                {isCollapsed && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: "calc(100% + 12px)",
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "#1e293b",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      color: "#e2e8f0",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      padding: "6px 12px",
-                      borderRadius: "8px",
-                      whiteSpace: "nowrap",
-                      pointerEvents: "none",
-                      opacity: 0,
-                      boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-                      zIndex: 100,
-                    }}
-                    className="group-hover:opacity-100 transition-opacity duration-150"
-                  >
+                  <span style={{ position: "relative", zIndex: 1 }}>
                     {item.label}
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: "-5px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        width: "8px",
-                        height: "8px",
-                        background: "#1e293b",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        borderRight: "none",
-                        borderTop: "none",
-                        rotate: "45deg",
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+                  </span>
+                </Link>
+              </motion.div>
             );
           })}
         </nav>
 
-        {/* Spacer */}
-        <div className="flex-1" />
+        {/* ── Divider ── */}
+        <div style={{ margin: "0 20px 16px", height: "1px", background: "rgba(255,255,255,0.12)" }} />
 
-        {/* Divider */}
-        <div
-          className="relative z-10 mx-4 mb-3"
-          style={{ height: "1px", background: "rgba(255,255,255,0.07)" }}
-        />
-
-        {/* User profile */}
-        <div className="relative z-10 px-3 pb-5">
-          <div
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "12px",
-              padding: isCollapsed ? "10px 8px" : "10px 12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              justifyContent: isCollapsed ? "center" : "space-between",
-              transition: "background 150ms",
-            }}
-            onMouseEnter={(e) =>
-              ((e.currentTarget as HTMLElement).style.background =
-                "rgba(255,255,255,0.07)")
-            }
-            onMouseLeave={(e) =>
-              ((e.currentTarget as HTMLElement).style.background =
-                "rgba(255,255,255,0.04)")
-            }
-          >
-            <div
-              style={{ display: "flex", alignItems: "center", gap: "10px", overflow: "hidden" }}
-            >
+        {/* ── User profile ── */}
+        <div style={{ padding: "0 12px" }}>
+          <div style={{
+            background: "rgba(255,255,255,0.1)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            borderRadius: "9999px",
+            padding: "10px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            justifyContent: "space-between",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", overflow: "hidden", minWidth: 0 }}>
               {/* Avatar */}
-              <div
-                style={{
-                  width: "34px",
-                  height: "34px",
-                  borderRadius: "50%",
-                  flexShrink: 0,
-                  overflow: "hidden",
-                  background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: "1.5px solid rgba(255,255,255,0.12)",
-                }}
-              >
+              <div style={{
+                width: "36px", height: "36px", borderRadius: "50%",
+                flexShrink: 0, overflow: "hidden",
+                background: "rgba(255,255,255,0.25)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1.5px solid rgba(255,255,255,0.35)",
+              }}>
                 {user?.avatar_url ? (
-                  <img
-                    src={user.avatar_url}
-                    alt="Avatar"
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
+                  <img src={user.avatar_url} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
-                  <span
-                    style={{
-                      color: "white",
-                      fontSize: "13px",
-                      fontWeight: 700,
-                    }}
-                  >
+                  <span style={{ color: "white", fontSize: "13px", fontWeight: 700 }}>
                     {user?.full_name?.charAt(0).toUpperCase() || "?"}
                   </span>
                 )}
               </div>
 
-              {/* Name + Role */}
-              {!isCollapsed && (
-                <div style={{ minWidth: 0 }}>
-                  <p
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#e2e8f0",
-                      lineHeight: 1.2,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {user?.full_name || "Employee"}
-                  </p>
-                  <p
-                    style={{
-                      fontSize: "11px",
-                      color: "rgba(100,116,139,0.9)",
-                      fontWeight: 500,
-                      marginTop: "2px",
-                    }}
-                  >
-                    Employee
-                  </p>
-                </div>
-              )}
+              <div style={{ minWidth: 0 }}>
+                <p style={{
+                  fontSize: "12px", fontWeight: 700,
+                  color: "#ffffff", lineHeight: 1.3,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  fontFamily: "var(--font-sans)",
+                }}>
+                  {user?.full_name || "Employee"}
+                </p>
+                <p style={{
+                  fontSize: "9.5px", color: "rgba(255,255,255,0.55)", fontWeight: 600,
+                  marginTop: "2px", textTransform: "uppercase", letterSpacing: "0.12em",
+                }}>
+                  Employee
+                </p>
+              </div>
             </div>
 
-            {/* Signout */}
-            {!isCollapsed && (
-              <button
-                onClick={handleSignOut}
-                disabled={isSigningOut}
-                title="Sign out"
-                style={{
-                  padding: "6px",
-                  borderRadius: "8px",
-                  background: "transparent",
-                  border: "none",
-                  color: "rgba(100,116,139,0.8)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "all 150ms",
-                  flexShrink: 0,
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "rgba(239,68,68,0.12)";
-                  (e.currentTarget as HTMLElement).style.color = "#f87171";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "transparent";
-                  (e.currentTarget as HTMLElement).style.color =
-                    "rgba(100,116,139,0.8)";
-                }}
-              >
-                <IconLogout size={15} stroke={2} />
-              </button>
-            )}
+            <motion.button
+              onClick={handleSignOut}
+              disabled={isSigningOut}
+              title="Sign out"
+              style={{
+                width: "30px", height: "30px", borderRadius: "50%",
+                background: "transparent", border: "none",
+                color: "rgba(255,255,255,0.55)", cursor: "pointer",
+                flexShrink: 0,
+              }}
+              whileHover={{ color: "#fca5a5", background: "rgba(239,68,68,0.2)" }}
+              transition={{ duration: 0.15 }}
+            >
+              <IconLogout size={15} stroke={2} />
+            </motion.button>
           </div>
         </div>
       </aside>
 
-      {/* ─── Content Area ─── */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      {/* ── Main content ── */}
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
         {/* Topbar */}
-        <header
-          style={{
-            height: "60px",
-            background: "#ffffff",
-            borderBottom: "1px solid #e2e8f0",
-            boxShadow: "0 1px 8px rgba(15,23,42,0.06)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 28px",
-            flexShrink: 0,
-            zIndex: 40,
-          }}
-        >
-          {/* Page title */}
-          <div>
-            <h1
-              style={{
-                fontSize: "15px",
-                fontWeight: 700,
-                color: "#0f172a",
-                lineHeight: 1.2,
-                letterSpacing: "-0.01em",
-              }}
-            >
-              {activeLabel}
-            </h1>
-            <p
-              style={{
-                fontSize: "11px",
-                color: "#94a3b8",
-                fontWeight: 500,
-                marginTop: "2px",
-                textTransform: "capitalize",
-              }}
-            >
-              Employee Portal / {activeId}
-            </p>
-          </div>
+        <header style={{
+          height: "64px",
+          background: "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderBottom: "1px solid rgba(203,213,225,0.35)",
+          boxShadow: "0 1px 6px rgba(15,23,42,0.04)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "0 32px", flexShrink: 0, zIndex: 40,
+          position: "sticky", top: 0,
+        }}>
+          <nav style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#94a3b8", fontWeight: 500, letterSpacing: "0.02em" }}>
+            <span>Portal</span>
+            <span style={{ fontSize: "14px", color: "#cbd5e1", lineHeight: 1 }}>›</span>
+            <span style={{ color: "#0f172a", fontWeight: 600 }}>{activeLabel}</span>
+          </nav>
 
-          {/* Right controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {/* Search */}
-            <div
-              className="hidden md:flex"
-              style={{ position: "relative", alignItems: "center" }}
-            >
-              <IconSearch
-                size={15}
-                stroke={2}
-                style={{
-                  position: "absolute",
-                  left: "12px",
-                  color: "#94a3b8",
-                  pointerEvents: "none",
-                }}
-              />
-              <input
-                style={{
-                  background: "#f8fafc",
-                  border: "1.5px solid #e2e8f0",
-                  borderRadius: "10px",
-                  padding: "8px 14px 8px 34px",
-                  fontSize: "13px",
-                  width: "196px",
-                  outline: "none",
-                  color: "#0f172a",
-                  transition: "all 200ms",
-                }}
-                placeholder="Search..."
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "#2563eb";
-                  e.currentTarget.style.boxShadow =
-                    "0 0 0 3px rgba(37,99,235,0.1)";
-                  e.currentTarget.style.width = "240px";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "#e2e8f0";
-                  e.currentTarget.style.boxShadow = "none";
-                  e.currentTarget.style.width = "196px";
-                }}
-              />
-            </div>
-
-            {/* Notifications */}
-            <button
-              style={{
-                position: "relative",
-                padding: "8px",
-                borderRadius: "10px",
-                background: "transparent",
-                border: "none",
-                color: "#64748b",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                transition: "all 150ms",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = "#eff6ff";
-                (e.currentTarget as HTMLElement).style.color = "#2563eb";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background =
-                  "transparent";
-                (e.currentTarget as HTMLElement).style.color = "#64748b";
-              }}
-            >
-              <IconBell size={18} stroke={1.8} />
-              <span
-                style={{
-                  position: "absolute",
-                  top: "7px",
-                  right: "7px",
-                  width: "7px",
-                  height: "7px",
-                  background: "#2563eb",
-                  borderRadius: "50%",
-                  border: "1.5px solid white",
-                }}
-              />
-            </button>
-
-            {/* User chip */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "5px 12px 5px 6px",
-                background: "#f8fafc",
-                border: "1.5px solid #e2e8f0",
-                borderRadius: "24px",
-                cursor: "default",
-              }}
-            >
-              <div
-                style={{
-                  width: "26px",
-                  height: "26px",
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    color: "white",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {user?.full_name?.charAt(0).toUpperCase() || "?"}
-                </span>
-              </div>
-              <span
-                style={{
-                  fontSize: "12.5px",
-                  fontWeight: 600,
-                  color: "#334155",
-                  maxWidth: "100px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {user?.full_name?.split(" ")[0] || "Employee"}
+          {/* User chip */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "5px 14px 5px 6px", background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: "9999px" }}>
+            <div style={{
+              width: "28px", height: "28px", borderRadius: "50%",
+              background: SIDEBAR_BG,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <span style={{ color: "white", fontSize: "11px", fontWeight: 700 }}>
+                {user?.full_name?.charAt(0).toUpperCase() || "?"}
               </span>
             </div>
+            <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#334155", maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user?.full_name?.split(" ")[0] || "Employee"}
+            </span>
           </div>
         </header>
 
         {/* Page content */}
-        <div
-          style={{ flex: 1, overflowY: "auto", background: "#f1f5f9" }}
-        >
-          {children}
+        <div style={{ flex: 1, overflowY: "auto", background: "#f7f9fb" }}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              style={{ height: "100%" }}
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
     </div>
@@ -710,15 +310,8 @@ export function EmployeeSidebar({ children }: { children: React.ReactNode }) {
     <Suspense
       fallback={
         <div style={{ display: "flex", height: "100vh", width: "100%" }}>
-          <div
-            style={{
-              width: "236px",
-              background: "linear-gradient(180deg, #0d1526 0%, #0f1c35 100%)",
-              height: "100%",
-              flexShrink: 0,
-            }}
-          />
-          <div style={{ flex: 1, background: "#f1f5f9" }} />
+          <div style={{ width: "256px", background: "#0a192f", height: "100%", flexShrink: 0 }} />
+          <div style={{ flex: 1, background: "#f7f9fb" }} />
         </div>
       }
     >

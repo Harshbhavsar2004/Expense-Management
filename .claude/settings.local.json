@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc:*)",
-      "Bash(grep \"\\\\.py$\")"
+      "Bash(grep \"\\\\.py$\")",
+      "Skill(update-config)",
+      "Bash(npx shadcn@latest add card badge skeleton input table tabs separator tooltip avatar scroll-area --yes)",
+      "Bash(npx next:*)"
     ]
   }
 }

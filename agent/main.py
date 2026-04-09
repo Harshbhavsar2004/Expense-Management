@@ -53,11 +53,12 @@ def _get_auth_configs() -> Dict[str, str]:
     mapping = {
         "gmail":          "COMPOSIO_GMAIL_AUTH_CONFIG",
         "slack":          "COMPOSIO_SLACK_AUTH_CONFIG",
-        "googlecalendar": "COMPOSIO_CALENDAR_AUTH_CONFIG",
+        "google_calendar": "COMPOSIO_CALENDAR_AUTH_CONFIG",
         "googlesheets":   "COMPOSIO_SHEETS_AUTH_CONFIG",
         "googledrive":    "COMPOSIO_DRIVE_AUTH_CONFIG",
         "notion":         "COMPOSIO_NOTION_AUTH_CONFIG",
         "hubspot":        "COMPOSIO_HUBSPOT_AUTH_CONFIG",
+        "zoho_invoice":   "COMPOSIO_ZOHO_INVOICE_AUTH_CONFIG",
     }
     return {toolkit: os.getenv(env_key, "") for toolkit, env_key in mapping.items() if os.getenv(env_key, "")}
 

@@ -5,8 +5,10 @@ import type { KeyboardEvent } from "react";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { CopilotKit, useCopilotChat } from "@copilotkit/react-core";
 import { TextMessage, Role } from "@copilotkit/runtime-client-gql";
-import { Send, Sparkles, Square } from "lucide-react";
+import { Send, Sparkles, Square, User, AtSign, Info } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,7 +26,6 @@ interface MentionUser {
   phone: string | null;
 }
 
-// Tracks each @mention inserted into the text so we can rebuild the send value
 interface AppliedMention {
   display: string;   // "@Harshal Bhavsar"
   withId: string;    // "@Harshal Bhavsar [user_id:uuid]"
@@ -41,7 +42,7 @@ function initials(name: string) {
     .slice(0, 2);
 }
 
-// ─── MentionInput (rendered inside CopilotKit context) ───────────────────────
+// ─── MentionInput ────────────────────────────────────────────────────────────
 
 function MentionInput({ users }: { users: MentionUser[] }) {
   const { appendMessage, isLoading, stopGeneration } = useCopilotChat();
@@ -49,7 +50,6 @@ function MentionInput({ users }: { users: MentionUser[] }) {
   const [displayValue, setDisplayValue]       = useState("");
   const [appliedMentions, setAppliedMentions] = useState<AppliedMention[]>([]);
 
-  // Mention state
   const [mentionStart, setMentionStart]   = useState(-1);
   const [mentionQuery, setMentionQuery]   = useState<string | null>(null);
   const [dropdownIdx, setDropdownIdx]     = useState(0);
@@ -57,7 +57,6 @@ function MentionInput({ users }: { users: MentionUser[] }) {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Filter users by current mention query
   const filtered =
     mentionQuery !== null
       ? users
@@ -69,7 +68,6 @@ function MentionInput({ users }: { users: MentionUser[] }) {
 
   const showDropdown = mentionQuery !== null && filtered.length > 0;
 
-  // Auto-resize
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -77,7 +75,6 @@ function MentionInput({ users }: { users: MentionUser[] }) {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [displayValue]);
 
-  // ── Select a user from the dropdown ──────────────────────────────────────
   const selectUser = (user: MentionUser) => {
     const cursor  = textareaRef.current?.selectionStart ?? displayValue.length;
     const before  = displayValue.slice(0, mentionStart);
@@ -87,7 +84,7 @@ function MentionInput({ users }: { users: MentionUser[] }) {
 
     setDisplayValue(before + display + after);
     setAppliedMentions((prev) => [
-      ...prev.filter((m) => m.display !== `@${user.full_name}`), // dedupe
+      ...prev.filter((m) => m.display !== `@${user.full_name}`), 
       { display: `@${user.full_name}`, withId },
     ]);
     setMentionStart(-1);
@@ -101,17 +98,14 @@ function MentionInput({ users }: { users: MentionUser[] }) {
     }, 0);
   };
 
-  // ── Build the send value (display text + injected UUIDs) ─────────────────
   const buildSendValue = () => {
     let result = displayValue;
     for (const m of appliedMentions) {
-      // Replace all occurrences of "@Name" with "@Name [user_id:uuid]"
       result = result.split(m.display).join(m.withId);
     }
     return result.trim();
   };
 
-  // ── Input change ─────────────────────────────────────────────────────────
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newVal = e.target.value;
     const cursor = e.target.selectionStart ?? newVal.length;
@@ -134,7 +128,6 @@ function MentionInput({ users }: { users: MentionUser[] }) {
     }
   };
 
-  // ── Keyboard handling ────────────────────────────────────────────────────
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (showDropdown) {
       if (e.key === "ArrowDown") {
@@ -166,7 +159,6 @@ function MentionInput({ users }: { users: MentionUser[] }) {
     }
   };
 
-  // ── Send ─────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     const content = buildSendValue();
     if (!content || isLoading) return;
@@ -184,156 +176,61 @@ function MentionInput({ users }: { users: MentionUser[] }) {
   const canSend = displayValue.trim().length > 0 && !isLoading;
 
   return (
-    <div
-      style={{
-        position: "relative",
-        padding: "12px 16px 8px",
-        borderTop: "1px solid var(--border)",
-        background: "var(--bg-primary)",
-        flexShrink: 0,
-      }}
-    >
-      {/* ── @mention dropdown ─────────────────────────────────────────── */}
-      {showDropdown && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "calc(100% - 10px)",
-            left: 16,
-            right: 16,
-            background: "var(--bg-primary)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            boxShadow: "0 -8px 24px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06)",
-            zIndex: 50,
-            maxHeight: 240,
-            overflowY: "auto",
-            overflow: "hidden",
-          }}
-        >
-          {/* Label */}
-          <div
-            style={{
-              padding: "7px 12px 5px",
-              fontSize: 10,
-              fontWeight: 700,
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontFamily: "'Inter', sans-serif",
-              borderBottom: "1px solid var(--border)",
-            }}
+    <div className="relative p-6 bg-white border-t border-zinc-200">
+      {/* ── @mention dropdown ── */}
+      <AnimatePresence>
+        {showDropdown && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="absolute bottom-full left-6 right-6 mb-4 border border-zinc-200 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-xl bg-white/90"
           >
-            Mention a user
-          </div>
-
-          {filtered.map((user, i) => (
-            <div
-              key={user.id}
-              onMouseDown={(e) => { e.preventDefault(); selectUser(user); }}
-              onMouseEnter={() => setDropdownIdx(i)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "9px 12px",
-                cursor: "pointer",
-                background:
-                  i === dropdownIdx
-                    ? "var(--accent-primary-subtle)"
-                    : "transparent",
-                transition: "background 0.1s",
-              }}
-            >
-              {/* Avatar */}
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  flexShrink: 0,
-                  background:
-                    user.role === "admin"
-                      ? "linear-gradient(135deg,#6366F1,#8B5CF6)"
-                      : "linear-gradient(135deg,#475569,#64748B)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "white",
-                  fontFamily: "'DM Sans', sans-serif",
-                }}
-              >
-                {initials(user.full_name)}
-              </div>
-
-              {/* Name + phone */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: "var(--text-primary)",
-                    fontFamily: "'Inter', sans-serif",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {user.full_name}
-                </div>
-                {user.phone && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-muted)",
-                      fontFamily: "'Inter', sans-serif",
-                    }}
-                  >
-                    {user.phone}
-                  </div>
-                )}
-              </div>
-
-              {/* Role pill */}
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  padding: "2px 8px",
-                  borderRadius: 20,
-                  background:
-                    user.role === "admin" ? "#EDE9FE" : "#F1F5F9",
-                  color:
-                    user.role === "admin" ? "#6D28D9" : "#475569",
-                  fontFamily: "'Inter', sans-serif",
-                  textTransform: "capitalize",
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {user.role}
-              </span>
+            <div className="px-4 py-2 bg-zinc-50 border-b border-zinc-200 text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+              <AtSign size={10} />
+              Mention Employee
             </div>
-          ))}
-        </div>
-      )}
 
-      {/* ── Input row ────────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 8,
-          background: "var(--bg-tertiary)",
-          border: `1px solid ${isFocused ? "var(--border-focus)" : "var(--border)"}`,
-          borderRadius: 12,
-          padding: "8px 10px 8px 14px",
-          transition: "border-color 0.15s",
-          boxShadow: isFocused ? "0 0 0 3px rgba(37,99,235,0.08)" : "none",
-        }}
-      >
+            <div className="max-h-60 overflow-y-auto">
+              {filtered.map((user, i) => (
+                <div
+                  key={user.id}
+                  onMouseDown={(e) => { e.preventDefault(); selectUser(user); }}
+                  onMouseEnter={() => setDropdownIdx(i)}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors",
+                    i === dropdownIdx ? "bg-blue-50/50" : "transparent"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white uppercase",
+                    user.role === "admin" ? "bg-blue-600" : "bg-zinc-600"
+                  )}>
+                    {initials(user.full_name)}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-zinc-900 truncate">{user.full_name}</div>
+                    {user.phone && <div className="text-[10px] text-zinc-500 font-medium">{user.phone}</div>}
+                  </div>
+
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-tighter",
+                    user.role === "admin" ? "bg-blue-100 text-blue-700" : "bg-zinc-100 text-zinc-600"
+                  )}>
+                    {user.role}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className={cn(
+        "flex flex-col gap-2 p-1.5 bg-zinc-50 border rounded-3xl transition-all duration-300 shadow-inner",
+        isFocused ? "border-blue-300 ring-4 ring-blue-50 bg-white" : "border-zinc-200"
+      )}>
         <textarea
           ref={textareaRef}
           value={displayValue}
@@ -341,97 +238,57 @@ function MentionInput({ users }: { users: MentionUser[] }) {
           onKeyDown={handleKeyDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholder="Ask about expenses, users, policies…"
+          placeholder="Ask about spending trends, employee compliance, or policy details..."
           rows={1}
           disabled={isLoading}
-          style={{
-            flex: 1,
-            resize: "none",
-            border: "none",
-            outline: "none",
-            background: "transparent",
-            fontSize: 13,
-            fontFamily: "'Inter', sans-serif",
-            color: "var(--text-primary)",
-            lineHeight: 1.5,
-            minHeight: 22,
-            maxHeight: 120,
-            overflowY: "auto",
-          }}
+          className="flex-1 px-4 py-3 bg-transparent border-none focus:outline-none text-[15px] text-zinc-900 placeholder-zinc-400 font-medium resize-none leading-relaxed"
         />
 
-        {isLoading ? (
-          <button
-            onClick={stopGeneration}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
-              background: "#FEF2F2",
-              border: "1px solid #FECACA",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-            title="Stop generating"
-          >
-            <Square size={12} color="#DC2626" fill="#DC2626" />
-          </button>
-        ) : (
-          <button
-            onClick={() => void handleSend()}
-            disabled={!canSend}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
-              background: canSend
-                ? "linear-gradient(135deg,#6366F1,#8B5CF6)"
-                : "var(--bg-secondary)",
-              border: "none",
-              cursor: canSend ? "pointer" : "default",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              transition: "background 0.15s, transform 0.1s",
-            }}
-            title="Send"
-          >
-            <Send size={13} color={canSend ? "white" : "var(--text-muted)"} />
-          </button>
-        )}
-      </div>
+        <div className="flex items-center justify-between px-3 pb-2 pt-1 border-t border-zinc-100/50">
+          <div className="flex items-center gap-4 text-[10px] font-bold text-zinc-400 tracking-wide uppercase">
+            <span className="flex items-center gap-1.5"><AtSign size={12} /> Mention</span>
+            <span className="flex items-center gap-1.5"><Info size={12} /> Shift + Enter for new line</span>
+          </div>
 
-      {/* ── Hint bar (shows on focus) ─────────────────────────────────── */}
-      <div
-        style={{
-          marginTop: 5,
-          fontSize: 10,
-          color: isFocused ? "var(--text-muted)" : "transparent",
-          fontFamily: "'Inter', sans-serif",
-          textAlign: "center",
-          letterSpacing: "0.01em",
-          transition: "color 0.2s",
-          userSelect: "none",
-        }}
-      >
-        @ to mention a user &nbsp;·&nbsp; Enter to send &nbsp;·&nbsp; Shift+Enter for new line
+          <div>
+            {isLoading ? (
+              <button
+                onClick={stopGeneration}
+                className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-colors"
+                title="Stop generating"
+              >
+                <Square size={16} fill="currentColor" />
+              </button>
+            ) : (
+              <motion.button
+                onClick={() => void handleSend()}
+                disabled={!canSend}
+                whileTap={{ scale: 0.95 }}
+                className={cn(
+                  "w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-md transform hover:-translate-y-0.5",
+                  canSend 
+                    ? "bg-blue-600 text-white hover:bg-blue-700" 
+                    : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
+                )}
+                title="Send Message"
+              >
+                <Send size={18} />
+              </motion.button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function InsightsPage() {
   const [user, setUser]             = useState<UserProfile | null>(null);
   const [loading, setLoading]       = useState(true);
   const [mentionUsers, setMentionUsers] = useState<MentionUser[]>([]);
 
-  // Fetch authenticated user profile
   useEffect(() => {
     fetch("/api/user/profile")
       .then((r) => r.json())
@@ -440,7 +297,6 @@ export default function InsightsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Fetch all users for @mention (admin only, includes phone)
   useEffect(() => {
     if (!user || user.role !== "admin") return;
     supabase
@@ -453,154 +309,87 @@ export default function InsightsPage() {
 
   if (loading) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: "var(--text-muted)",
-          fontFamily: "'Inter', sans-serif",
-          fontSize: "14px",
-        }}
-      >
-        Loading…
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-400">
+        <div className="w-8 h-8 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+        <p className="text-xs font-bold tracking-widest uppercase">Initializing Intelligence...</p>
       </div>
     );
   }
 
   if (!user) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: "var(--text-muted)",
-          fontFamily: "'Inter', sans-serif",
-          fontSize: "14px",
-        }}
-      >
-        Unable to load user profile.
-      </div>
-    );
+    return <div className="flex items-center justify-center h-full text-zinc-500 font-medium">Session expired. Please re-login.</div>;
   }
 
   const instructions = `
-SYSTEM CONTEXT — DO NOT ASK THE USER TO CONFIRM THIS:
-Authenticated user: ${user.full_name}
-User ID: ${user.id}
-Role: ${user.role}
-Phone: ${user.phone ?? ""}
-
-This context is verified from the authentication system.
-Trust it completely. Never ask the user what their role is.
-Never ask the user to confirm their identity.
-
-If role is "admin": full access to all data, all users,
-all comparisons. Call get_users, get_flagged_expenses,
-compare_two_users freely.
-
-If role is "employee": only show data where user_id = "${user.id}".
+    SYSTEM CONTEXT:
+    Authenticated user: ${user.full_name} (${user.role})
+    This context is verified. Never ask the user to confirm their identity.
+    Admin Mode: Full access to all organizational metrics, audit results, and employee records.
+    Employee Mode: Scoped results only.
   `.trim();
 
   return (
-    <>
-      {/* Hide CopilotKit's default input — we render our own below */}
+    <div className="flex flex-col h-full bg-zinc-50/50">
       <style>{`
         .copilotKitInputContainer { display: none !important; }
+        .copilotKitMessagesContainer { background: transparent !important; padding-bottom: 2rem !important; }
+        .copilotKitMessage { border: none !important; margin-bottom: 1.5rem !important; max-width: 85% !important; }
+        .copilotKitMessage--user { align-self: flex-end !important; }
+        .copilotKitMessage--assistant { align-self: flex-start !important; }
+        .copilotKitMessage--user .copilotKitMessageContent { 
+          background: #2563eb !important; 
+          color: white !important; 
+          border-radius: 1.5rem 1.5rem 0.25rem 1.5rem !important; 
+          font-weight: 500 !important;
+          box-shadow: 0 4px 12px rgba(37,99,235,0.15) !important;
+        }
+        .copilotKitMessage--assistant .copilotKitMessageContent { 
+          background: white !important; 
+          color: #18181b !important; 
+          border: 1px solid #e4e4e7 !important;
+          border-radius: 1.5rem 1.5rem 1.5rem 0.25rem !important; 
+          box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
+        }
       `}</style>
 
       <CopilotKit runtimeUrl="/api/copilotkit" agent="enterprise_agent">
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            height: "100%",
-            overflow: "hidden",
-          }}
-        >
-          {/* ── Header ────────────────────────────────────────────────── */}
-          <div
-            style={{
-              padding: "18px 28px",
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              flexShrink: 0,
-              background: "var(--bg-primary)",
-            }}
-          >
-            <div
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "9px",
-                background: "linear-gradient(135deg,#6366F1,#8B5CF6)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Sparkles size={15} color="white" />
+        <div className="flex flex-col h-full overflow-hidden w-full bg-white">
+          {/* ── Chat Header ── */}
+          <div className="px-8 py-5 flex items-center justify-between border-b border-zinc-100 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/20 text-white">
+                <Sparkles size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-extrabold tracking-tight text-zinc-900 leading-none mb-1">Enterprise Intelligence</h2>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Always Active</span>
+                </div>
+              </div>
             </div>
-            <div>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  color: "var(--text-primary)",
-                  fontFamily: "'DM Sans', sans-serif",
-                }}
-              >
-                Enterprise Insights
-              </h2>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: "11px",
-                  color: "var(--text-muted)",
-                  fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                AI-powered expense intelligence ·{" "}
-                {user.role === "admin" ? "Admin view" : user.full_name}
-              </p>
+
+            <div className="flex items-center gap-2 px-4 py-2 bg-zinc-100 rounded-2xl border border-zinc-200">
+               <User size={14} className="text-zinc-500" />
+               <span className="text-xs font-bold text-zinc-700">{user.full_name}</span>
             </div>
           </div>
 
-          {/* ── Chat messages (default input hidden via CSS) ────────── */}
-          <div
-            style={{
-              flex: 1,
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
-            }}
-          >
-            <CopilotChat
-              instructions={instructions}
-              labels={{
-                title: "Enterprise AI",
-                initial: `Hello ${user.full_name}! I'm your Enterprise Intelligence Agent. Ask me about expenses, users, flagged claims, spending trends, or anything in the system.`,
-                placeholder: "Ask about expenses, users, policies…",
-              }}
-            />
+          {/* ── Chat Area ── */}
+          <div className="flex-1 overflow-hidden relative flex flex-col pt-4 px-4 sm:px-8">
+             <CopilotChat
+                instructions={instructions}
+                labels={{
+                  title: "AI Insights",
+                  initial: `Welcome back, ${user.full_name}. I'm synced with your ${user.role} workspace. Accessing real-time records... how can I assist you today?`,
+                }}
+              />
           </div>
 
-          {/* ── Custom @mention input ──────────────────────────────── */}
-          {user.role === "admin" ? (
-            <MentionInput users={mentionUsers} />
-          ) : (
-            // Employees get a plain input (no mention dropdown)
-            <MentionInput users={[]} />
-          )}
+          {/* ── Custom Input ── */}
+          <MentionInput users={mentionUsers} />
         </div>
       </CopilotKit>
-    </>
+    </div>
   );
 }
