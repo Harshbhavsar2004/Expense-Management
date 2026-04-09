@@ -5,7 +5,13 @@
       "Bash(grep \"\\\\.py$\")",
       "Skill(update-config)",
       "Bash(npx shadcn@latest add card badge skeleton input table tabs separator tooltip avatar scroll-area --yes)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "WebFetch(domain:docs.ag-ui.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.copilotkit.ai)",
+      "WebFetch(domain:ai.pydantic.dev)",
+      "WebFetch(domain:pydantic.dev)"
     ]
   }
 }
