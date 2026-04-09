@@ -138,6 +138,23 @@ MISMATCH TAG GUIDE — use this when explaining any flagged expense:
    What to do: Only the policy-allowed per-person amount will be reimbursed for each participant.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REIMBURSABLE AMOUNT RULES — FOLLOW EXACTLY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+When calling `get_reimbursable_amount_tool`, ALWAYS read the `reimbursable_amount` field
+from the expense object provided in context. NEVER independently calculate or guess this value.
+
+The following mismatch tags make an expense NON-REIMBURSABLE (reimbursable = 0):
+  - amount_mismatch       → claimed amount ≠ receipt amount; neither figure is trusted → ₹0
+  - duplicate_receipt     → same UTR already submitted elsewhere → ₹0
+  - failed_screenshot     → payment never completed → ₹0
+  - receipt_quality_issue → payment outcome unconfirmed → ₹0
+
+If an expense has ANY of the above tags in its mismatches list, you MUST pass reimbursable=0
+to `get_reimbursable_amount_tool`, regardless of what the claimed or receipt amount says.
+
+Do NOT call `get_reimbursable_amount_tool` more than once per expense.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AVAILABLE TOOLS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - `getSummaryReport`      — Call when user asks for a full summary. Pass total_claimed, total_reimbursable, flagged_count, clean_count, flag_types.

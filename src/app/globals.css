@@ -74,8 +74,8 @@
 }
 
 @theme inline {
-    --font-sans: var(--font-sans);
-    --font-heading: var(--font-heading);
+    --font-sans: var(--font-poppins), sans-serif;
+    --font-heading: var(--font-poppins), sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -119,11 +119,75 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+    font-family: var(--font-sans);
+  }
   body {
     @apply bg-background text-foreground;
-    }
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
   html {
     @apply font-sans;
-    }
+  }
+  h1 {
+    @apply text-4xl font-extrabold tracking-tight;
+    font-family: var(--font-heading);
+  }
+  h2 {
+    @apply text-3xl font-bold tracking-tight;
+    font-family: var(--font-heading);
+  }
+  h3 {
+    @apply text-xl font-bold tracking-tight;
+    font-family: var(--font-heading);
+  }
+  p {
+    @apply text-sm leading-relaxed;
+    font-family: var(--font-sans);
+  }
+}
+
+@layer utilities {
+  .typo-h1 {
+    @apply text-4xl font-extrabold tracking-tight;
+    font-family: var(--font-heading);
+  }
+  .typo-h2 {
+    @apply text-3xl font-bold tracking-tight;
+    font-family: var(--font-heading);
+  }
+  .typo-h3 {
+    @apply text-xl font-bold tracking-tight;
+    font-family: var(--font-heading);
+  }
+  .typo-body-default {
+    @apply text-sm leading-relaxed;
+    font-family: var(--font-sans);
+  }
+  .typo-body-small {
+    @apply text-xs leading-normal;
+    font-family: var(--font-sans);
+  }
+  .typo-overline {
+    @apply text-[11px] font-bold uppercase tracking-wider text-slate-500;
+    font-family: var(--font-sans);
+  }
+
+  /* Premium UI Components */
+  .premium-card {
+    @apply bg-white rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300;
+  }
+
+  .stat-card {
+    @apply bg-white rounded-2xl p-5 border border-slate-200/60 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:scale-[1.02];
+  }
+
+  .section-header {
+    @apply flex items-center justify-between mb-6;
+  }
+
+  .shimmer {
+    @apply animate-pulse bg-slate-100;
+  }
 }

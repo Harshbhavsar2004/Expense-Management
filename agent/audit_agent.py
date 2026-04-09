@@ -307,8 +307,15 @@ def set_audit_result(
         per_person_limit_exceeded — Meal per person > policy limit
     """
     # Use pre-computed reimbursable from Python (authoritative).
-    # Override to ₹0 if blocking tags are present (LLM may not have set these at pre-flight).
-    BLOCKING = {"duplicate_receipt", "failed_screenshot", "receipt_quality_issue"}
+    # Override to ₹0 if any blocking tag is present.
+    # amount_mismatch is included: if the receipt doesn't match what was claimed,
+    # neither figure can be trusted — the employee must resubmit with the correct receipt.
+    BLOCKING = {
+        "duplicate_receipt",
+        "failed_screenshot",
+        "receipt_quality_issue",
+        "amount_mismatch",
+    }
     pre_computed = float(tool_context.state.get("_computed_reimbursable") or 0)
     if any(t in BLOCKING for t in mismatches):
         final_reimbursable = 0.0

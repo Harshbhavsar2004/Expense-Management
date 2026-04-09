@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev          # Start both Next.js (port 3000) and FastAPI agent (port 8000) concurrently
 npm run dev:ui       # Next.js only (Turbopack)
 npm run dev:agent    # FastAPI agent server only
+npm run dev:debug    # Same as dev but with LOG_LEVEL=debug (Windows syntax)
 ```
 
 ### Build & Quality
@@ -20,6 +21,7 @@ npm run lint         # ESLint validation
 ### Agent Setup
 ```bash
 npm run install:agent   # Create Python venv and install dependencies via uv (auto-runs on npm install)
+# Internally runs: cd agent && uv sync  (uses uv sync, not uv install/pip)
 ```
 
 ### Database Utilities
@@ -105,7 +107,14 @@ dashboards          — user-saved AI-generated chart specs
 chat_messages       — session-based chat history
 ```
 
-Run migrations in order from the `supabase/` directory: `supabase_setup.sql` first, then the `*_migration.sql` files.
+Run migrations manually in the Supabase SQL Editor in this order:
+1. `supabase_setup.sql` — core tables (mandatory)
+2. `supabase_policies_migration.sql` — RLS policies (mandatory)
+3. `supabase_audit_functions_migration.sql` — audit logic (mandatory)
+4. `supabase_cashfree_migration.sql` — payouts (if using Cashfree)
+5. `supabase_composio_connectors_migration.sql` — integrations (if using Composio)
+6. `supabase_phone_migration.sql` — WhatsApp (if using WhatsApp)
+7. `supabase_policy_overrides_migration.sql`, `supabase_dashboards_table.sql`, `supabase_source_column_migration.sql` — optional features
 
 ### Environment Variables
 
@@ -127,6 +136,27 @@ COMPOSIO_API_KEY
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
+PYTHONIOENCODING=utf-8          # Required on Windows to avoid encoding errors
+WHATSAPP_ACCESS_TOKEN
+WHATSAPP_PHONE_NUMBER_ID
+WHATSAPP_API_VERSION=v22.0
+WHATSAPP_VERIFY_TOKEN
+CASHFREE_CLIENT_ID
+CASHFREE_CLIENT_SECRET
+CASHFREE_ENV=sandbox            # or "production"
+CASHFREE_PAYOUT_BASE_URL        # sandbox: https://payout-gamma.cashfree.com
+```
+
+Composio auth configs (one per toolkit, only needed for connected integrations):
+```
+COMPOSIO_GMAIL_AUTH_CONFIG
+COMPOSIO_SLACK_AUTH_CONFIG
+COMPOSIO_CALENDAR_AUTH_CONFIG
+COMPOSIO_SHEETS_AUTH_CONFIG
+COMPOSIO_DRIVE_AUTH_CONFIG
+COMPOSIO_NOTION_AUTH_CONFIG
+COMPOSIO_HUBSPOT_AUTH_CONFIG
+COMPOSIO_ZOHO_INVOICE_AUTH_CONFIG
 ```
 
 ### Key Architectural Notes
@@ -137,3 +167,6 @@ SUPABASE_SERVICE_ROLE_KEY
 - **RBAC is enforced in the enterprise agent**: admins see all users' data; employees only see their own. This logic lives in `enterprise_agent.py`, not at the database layer for agent queries.
 - **TypeScript path alias**: `@/*` maps to `./src/*`.
 - **`next.config.ts`** marks `@copilotkit/runtime` as a server-only external package.
+- **CopilotKit agent switching**: The root layout defaults to `agent="chatbot_agent"` (employee chatbot). Admin insight pages override this to `agent="enterprise_agent"`. When adding new AI-powered pages, set the `agent` prop on `CopilotKit` accordingly.
+- **UI components**: Both HeroUI (`@heroui/react`) and shadcn (`radix-ui`) coexist. HeroUI is primary for layout/tables; shadcn components live in `src/components/ui/`. Use Tabler Icons (`@tabler/icons-react`) for iconography.
+- **No test suite**: There are no test files or test framework configured in this project.

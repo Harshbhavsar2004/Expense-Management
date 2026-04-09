@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 export async function POST() {
   try {
-    const res = await fetch("http://localhost:8000/voice/start", {
+    const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8000";
+    const res = await fetch(`${agentUrl}/voice/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });

@@ -4,7 +4,7 @@
 
 import type { ExtractedReceiptData } from "./types";
 
-const AGENT_URL = process.env.AGENT_URL || "http://localhost:8000";
+const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8000";
 
 export async function analyseReceipt(
   base64: string,

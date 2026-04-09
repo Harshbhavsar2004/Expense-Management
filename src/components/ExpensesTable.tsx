@@ -51,12 +51,11 @@ interface ExpensesTableProps {
 }
 
 const COLUMNS = [
-  { key: "created_at",           label: "Submitted",        width: "120px" },
+  { key: "created_at",           label: "Dates",            width: "140px" },
   { key: "user_name",            label: "Employee",         width: "130px" },
   { key: "application_id",       label: "App ID / Client",  width: "140px" },
   { key: "expense_type",         label: "Category",         width: "110px" },
   { key: "sub_category",         label: "Sub-category",     width: "120px" },
-  { key: "date_range",           label: "Date Range",       width: "130px" },
   { key: "claimed_amount",       label: "Claimed",          width: "100px" },
   { key: "total_receipt_amount", label: "Receipt Amt",      width: "100px" },
   { key: "participant_type",     label: "Participants",     width: "110px" },
@@ -153,14 +152,15 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
-                {/* Submitted */}
+                {/* Dates */}
                 <td style={cellStyle}>
                   <div style={{ display: "flex", flexDirection: "column" }}>
-                    <span className="typo-label text-primary!">
-                      {new Date(row.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                    <span className="typo-label text-primary!" style={{ fontWeight: 700 }}>
+                      {row.date_range || row.receipts?.[0]?.transaction_date || 
+                        new Date(row.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                     </span>
-                    <span className="typo-caption text-muted!">
-                      {row.receipts?.[0]?.transaction_time || new Date(row.created_at).getFullYear()}
+                    <span className="typo-caption text-muted!" style={{ fontSize: "10px" }}>
+                      Sub: {new Date(row.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
                     </span>
                   </div>
                 </td>
@@ -208,8 +208,6 @@ export function ExpensesTable({ data, loading }: ExpensesTableProps) {
                 </td>
                 {/* Sub-category */}
                 <td style={{ ...cellStyle, color: "var(--text-secondary)" }}>{row.sub_category || "—"}</td>
-                {/* Date Range */}
-                <td style={{ ...cellStyle, color: "var(--text-secondary)", fontSize: "12px" }}>{row.date_range || "—"}</td>
                 {/* Claimed */}
                 <td style={cellStyle}>
                   <span className="typo-body-default font-bold! tabular-nums text-primary!">

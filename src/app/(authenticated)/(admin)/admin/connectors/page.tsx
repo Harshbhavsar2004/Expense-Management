@@ -15,37 +15,37 @@ const AVAILABLE_TOOLKITS: Toolkit[] = [
     id: "gmail",
     name: "Gmail",
     description: "Read and send emails",
-    logo: "https://www.vectorlogo.zone/logos/google_gmail/google_gmail-icon.svg",
+    logo: "https://cdn.simpleicons.org/gmail",
   },
   {
     id: "slack",
     name: "Slack",
     description: "Team communication",
-    logo: "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/slack/slack-original.svg",
+    logo: "https://imgs.search.brave.com/pGdG8jEhf6aGVlN4KeLJdYGa6lYlmPzvssQfCbQUlY4/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9pbWcu/aWNvbnM4LmNvbS9l/eHRlcm5hbC10aG9z/ZS1pY29ucy1mbGF0/LXRob3NlLWljb25z/LzEyMDAvZXh0ZXJu/YWwtU2xhY2stTG9n/by1zb2NpYWwtbWVk/aWEtdGhvc2UtaWNv/bnMtZmxhdC10aG9z/ZS1pY29ucy5qcGc",
   },
   {
     id: "google_calendar",
     name: "Google Calendar",
     description: "Manage schedules",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg",
+    logo: "https://cdn.simpleicons.org/googlecalendar",
   },
   {
     id: "github",
     name: "GitHub",
     description: "Code & repositories",
-    logo: "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg",
+    logo: "https://cdn.simpleicons.org/github",
   },
   {
     id: "zoho_desk",
     name: "Zoho Desk",
     description: "Customer support",
-    logo: "https://seeklogo.com/images/Z/zoho-desk-logo-6799042A27-seeklogo.com.png",
+    logo: "https://cdn.simpleicons.org/zoho",
   },
   {
     id: "zoho_invoice",
     name: "Zoho Invoice",
     description: "Billing & invoicing",
-    logo: "https://seeklogo.com/images/Z/zoho-invoice-logo-DCA93A7F13-seeklogo.com.png",
+    logo: "https://cdn.simpleicons.org/zoho",
   },
 ];
 
@@ -184,7 +184,7 @@ export default function IntegrationsPage() {
                   <img
                     src={toolkit.logo}
                     alt={toolkit.name}
-                    className="w-10 h-10 object-contain rounded-md border bg-white"
+                    className="w-10 h-10 object-contain rounded-md"
                   />
 
                   <div>

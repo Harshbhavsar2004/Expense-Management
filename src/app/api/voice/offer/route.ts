@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AGENT = "http://localhost:8000";
+const AGENT = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
   let body: unknown;

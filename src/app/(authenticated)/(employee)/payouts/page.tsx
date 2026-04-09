@@ -10,6 +10,15 @@ import {
   IconReceipt2,
 } from "@tabler/icons-react";
 import { CircularLoader } from "@/components/CircularLoader";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  IconX, 
+  IconExternalLink, 
+  IconCopy, 
+  IconCheck, 
+  IconBuildingBank 
+} from "@tabler/icons-react";
 
 interface Payout {
   id: string;
@@ -49,9 +58,11 @@ const defaultStatus = (s: string) => ({
   label: s || "Processing",
 });
 
+
 export default function PayoutsPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPayout, setSelectedPayout] = useState<Payout | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -86,156 +97,6 @@ export default function PayoutsPage() {
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
-        .payouts-root {
-          padding: 28px 32px;
-          width: 100%;
-          font-family: 'DM Sans', -apple-system, sans-serif;
-        }
-        .payouts-root * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        .po-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 24px;
-        }
-        .po-header-left { display: flex; align-items: center; gap: 14px; }
-        .po-header-icon {
-          width: 40px; height: 40px; border-radius: 10px;
-          background: #0f172a; color: #fff;
-          display: flex; align-items: center; justify-content: center;
-        }
-        .po-header h1 { font-size: 20px; font-weight: 700; color: #0f172a; }
-        .po-header p { font-size: 13px; color: #64748b; margin-top: 2px; }
-
-        /* Stats strip */
-        .po-stats {
-          display: flex; gap: 12px; margin-bottom: 20px;
-        }
-        .po-stat {
-          flex: 1;
-          background: #f8fafc;
-          border: 1px solid #f1f5f9;
-          border-radius: 12px;
-          padding: 14px 18px;
-          display: flex; flex-direction: column; gap: 2px;
-        }
-        .po-stat-label {
-          font-size: 11px; font-weight: 600; color: #94a3b8;
-          text-transform: uppercase; letter-spacing: 0.06em;
-        }
-        .po-stat-value {
-          font-size: 22px; font-weight: 700; color: #0f172a;
-          font-family: 'JetBrains Mono', monospace;
-        }
-        .po-stat-value.green { color: #059669; }
-
-        /* Table */
-        .po-table {
-          width: 100%;
-          background: #fff;
-          border: 1px solid #e2e8f0;
-          border-radius: 14px;
-          overflow: hidden;
-        }
-        .po-thead {
-          display: grid;
-          grid-template-columns: 1.8fr 1fr 1.2fr 1fr 0.8fr 40px;
-          padding: 0 20px;
-          height: 42px;
-          align-items: center;
-          background: #f8fafc;
-          border-bottom: 1px solid #f1f5f9;
-        }
-        .po-th {
-          font-size: 11px; font-weight: 600; color: #94a3b8;
-          text-transform: uppercase; letter-spacing: 0.05em;
-        }
-        .po-th.right { text-align: right; }
-
-        .po-row {
-          display: grid;
-          grid-template-columns: 1.8fr 1fr 1.2fr 1fr 0.8fr 40px;
-          padding: 0 20px;
-          height: 56px;
-          align-items: center;
-          border-bottom: 1px solid #f8fafc;
-          cursor: pointer;
-          transition: background 0.15s ease;
-        }
-        .po-row:last-child { border-bottom: none; }
-        .po-row:hover { background: #fafbfe; }
-
-        .po-cell {
-          font-size: 13.5px; color: #0f172a; font-weight: 500;
-          display: flex; align-items: center; gap: 6px;
-        }
-        .po-cell.secondary { color: #64748b; font-weight: 400; }
-        .po-cell.mono {
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 13px; font-weight: 500;
-        }
-        .po-cell.right { justify-content: flex-end; }
-
-        .po-amount {
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 14px; font-weight: 600; color: #0f172a;
-        }
-        .po-amount .currency {
-          font-size: 11px; font-weight: 500; color: #94a3b8; margin-right: 3px;
-        }
-
-        .po-badge {
-          display: inline-flex; align-items: center; gap: 4px;
-          padding: 3px 10px; border-radius: 6px;
-          font-size: 11px; font-weight: 600;
-          text-transform: uppercase; letter-spacing: 0.03em;
-        }
-
-        .po-arrow { color: #cbd5e1; display: flex; justify-content: flex-end; }
-        .po-row:hover .po-arrow { color: #2563eb; }
-
-        /* Empty state */
-        .po-empty {
-          padding: 72px 40px; text-align: center;
-          background: #fff; border: 1px solid #e2e8f0;
-          border-radius: 14px;
-        }
-        .po-empty-icon {
-          width: 56px; height: 56px; border-radius: 50%;
-          background: #f8fafc; color: #94a3b8;
-          display: flex; align-items: center; justify-content: center;
-          margin: 0 auto 16px;
-        }
-        .po-empty h3 { font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 6px; }
-        .po-empty p { font-size: 13px; color: #64748b; max-width: 300px; margin: 0 auto; line-height: 1.5; }
-
-        /* Shimmer */
-        .po-shimmer {
-          height: 56px;
-          background: linear-gradient(90deg, #f1f5f9 25%, #e8ecf1 50%, #f1f5f9 75%);
-          background-size: 200% 100%;
-          animation: shimmer 1.5s infinite;
-        }
-        @keyframes shimmer {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-          .payouts-root { padding: 20px 16px; }
-          .po-stats { flex-direction: column; }
-          .po-thead { display: none; }
-          .po-row {
-            display: flex; flex-wrap: wrap; gap: 8px;
-            height: auto; padding: 14px 16px;
-          }
-        }
-      `}</style>
 
       <div className="payouts-root">
         {/* Header */}
@@ -253,26 +114,35 @@ export default function PayoutsPage() {
 
         {/* Stats */}
         {!loading && payouts.length > 0 && (
-          <div className="po-stats">
-            <div className="po-stat">
-              <span className="po-stat-label">Total Paid</span>
-              <span className="po-stat-value green">
-                ₹{totalPaid.toLocaleString("en-IN")}
-              </span>
-            </div>
-            <div className="po-stat">
-              <span className="po-stat-label">Transactions</span>
-              <span className="po-stat-value">{payouts.length}</span>
-            </div>
-            <div className="po-stat">
-              <span className="po-stat-label">Successful</span>
-              <span className="po-stat-value">{successCount}</span>
-            </div>
-            <div className="po-stat">
-              <span className="po-stat-label">Pending</span>
-              <span className="po-stat-value">{pendingCount}</span>
-            </div>
-          </div>
+          <motion.div 
+            className="po-stats"
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: { opacity: 0 },
+              show: {
+                opacity: 1,
+                transition: { staggerChildren: 0.1 }
+              }
+            }}
+          >
+            {[
+              { label: "Total Paid", value: `₹${totalPaid.toLocaleString("en-IN")}`, variant: "green" },
+              { label: "Transactions", value: payouts.length, variant: "" },
+              { label: "Successful", value: successCount, variant: "" },
+              { label: "Pending", value: pendingCount, variant: "" }
+            ].map((stat, i) => (
+              <motion.div 
+                key={i}
+                className="po-stat"
+                variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
+                whileHover={{ y: -4, transition: { duration: 0.2 } }}
+              >
+                <span className="po-stat-label">{stat.label}</span>
+                <span className={cn("po-stat-value", stat.variant)}>{stat.value}</span>
+              </motion.div>
+            ))}
+          </motion.div>
         )}
 
         {/* Content */}
@@ -300,15 +170,16 @@ export default function PayoutsPage() {
               <span className="po-th" />
             </div>
 
-            {payouts.map((payout) => {
+            {payouts.map((payout, index) => {
               const st = getStatus(payout.payout_status);
               return (
-                <div
+                <motion.div
                   key={payout.id}
                   className="po-row"
-                  onClick={() =>
-                    (window.location.href = `/applications/${payout.application_id}`)
-                  }
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 + (index * 0.05) }}
+                  onClick={() => setSelectedPayout(payout)}
                 >
                   <div className="po-cell" style={{ fontWeight: 600 }}>
                     {payout.application_id}
@@ -345,12 +216,108 @@ export default function PayoutsPage() {
                   <div className="po-arrow">
                     <IconArrowRight size={16} />
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
         )}
+
+        <AnimatePresence>
+          {selectedPayout && (
+            <PayoutDetailsModal 
+              payout={selectedPayout} 
+              onClose={() => setSelectedPayout(null)} 
+            />
+          )}
+        </AnimatePresence>
       </div>
     </>
+  );
+}
+
+function PayoutDetailsModal({ payout, onClose }: { payout: Payout; onClose: () => void }) {
+  const st = statusMap[payout.payout_status?.toUpperCase()] ?? defaultStatus(payout.payout_status);
+  
+  return (
+    <motion.div 
+      className="modal-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div 
+        className="modal-content"
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div className="modal-title-wrap">
+            <div className="brand-logo"><IconCoin size={20} /></div>
+            <div>
+              <h3>Payout Details</h3>
+              <p>{payout.application_id}</p>
+            </div>
+          </div>
+          <button className="close-btn" onClick={onClose}><IconX size={18} /></button>
+        </div>
+
+        <div className="modal-body">
+          <div className="status-banner" style={{ background: `${st.bg}40` }}>
+            <div className="banner-icon" style={{ color: st.text }}>{st.icon}</div>
+            <div className="banner-text">
+              <span style={{ color: st.text }}>{st.label}</span>
+              <p>Processed on {new Date(payout.payout_initiated_at).toLocaleDateString()}</p>
+            </div>
+          </div>
+
+          <div className="detail-item" style={{ marginBottom: 24 }}>
+            <label>Amount Paid</label>
+            <div className="amount-hero">
+              <span className="curr">₹</span>
+              {Math.round(payout.reimbursable_amount).toLocaleString("en-IN")}
+            </div>
+          </div>
+
+          <div className="details-grid">
+            <div className="detail-item">
+              <label>Transfer ID</label>
+              <div className="copy-field">
+                <code>{payout.cashfree_transfer_id}</code>
+                <button onClick={() => navigator.clipboard.writeText(payout.cashfree_transfer_id)}>
+                  <IconCopy size={14} />
+                </button>
+              </div>
+            </div>
+            <div className="detail-item">
+              <label>Reference ID</label>
+              <p>{payout.id}</p>
+            </div>
+          </div>
+
+          <div className="bank-info">
+            <div className="bank-icon">
+              <IconBuildingBank size={20} stroke={1.5} />
+            </div>
+            <div className="bank-text">
+              <label>Recipient Bank Account</label>
+              <p>Direct Settlement to Primary Account</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button className="action-btn secondary" onClick={onClose}>Close</button>
+          <button 
+            className="action-btn primary" 
+            onClick={() => window.open(`https://payouts.cashfree.com/transfers/${payout.cashfree_transfer_id}`, '_blank')}
+          >
+            View on Cashfree <IconExternalLink size={14} />
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
