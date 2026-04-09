@@ -238,9 +238,6 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://expense-management-lblz.onrender.com",  # Render (current)
-        # "https://your-app.vercel.app",                # Add after Vercel deploy
-        # "https://expense-agent-xxxxxxxx-el.a.run.app",# Add after Cloud Run deploy
     ],
     allow_methods=["*"],
     allow_headers=["*"],
