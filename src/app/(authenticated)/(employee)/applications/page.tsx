@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Filter, Monitor, ChevronLeft, ChevronRight } from "lucide-react";
 import { CircularLoader } from "@/components/CircularLoader";
+import { motion, AnimatePresence } from "framer-motion";
 
 function WhatsAppIcon({ size = 14 }: { size?: number }) {
   return (
@@ -213,9 +214,6 @@ export default function ApplicationsPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
-            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight font-display">
-              Expense Applications
-            </h1>
             <p className="text-slate-500 mt-2 font-medium">
               Review and audit client visit reports.
             </p>
@@ -250,9 +248,6 @@ export default function ApplicationsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-2xl text-slate-600 font-bold hover:bg-slate-50 transition-all shadow-sm">
-            <Filter size={18} /> Filters
-          </button>
         </div>
 
         {/* Content */}
@@ -278,13 +273,18 @@ export default function ApplicationsPage() {
                     <th className="py-4 px-6 typo-overline text-slate-500">Status</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pagedApps.map((app: any) => (
-                    <tr
-                      key={app.id}
-                      onClick={() => router.push(`/applications/${app.application_id}`)}
-                      className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group"
-                    >
+                <tbody className="divide-y divide-slate-100">
+                  <AnimatePresence mode="popLayout">
+                    {pagedApps.map((app: any, index: number) => (
+                      <motion.tr
+                        key={app.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98 }}
+                        transition={{ duration: 0.2, delay: index * 0.04 }}
+                        onClick={() => router.push(`/applications/${app.application_id}`)}
+                        className="hover:bg-slate-50 cursor-pointer transition-colors group"
+                      >
                       <td className="py-4 px-6">
                         <span className="typo-body-default font-semibold text-blue-600 group-hover:text-blue-700 transition-colors">
                           {app.application_id}
@@ -323,8 +323,9 @@ export default function ApplicationsPage() {
                           {app.status || "draft"}
                         </span>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
+                  </AnimatePresence>
                 </tbody>
               </table>
 

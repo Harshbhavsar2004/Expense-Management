@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-const AGENT_URL = process.env.AGENT_URL || "http://localhost:8000";
+const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8000";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();

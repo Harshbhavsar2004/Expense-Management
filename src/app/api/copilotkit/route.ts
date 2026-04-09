@@ -12,20 +12,22 @@ const serviceAdapter = new ExperimentalEmptyAdapter();
  
 // 2. Create the CopilotRuntime instance and utilize the AG-UI client
 //    to setup the connection with the ADK agent.
+const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8000";
+
+const agents: Record<string, any> = {
+    "refiner_agent":  new HttpAgent({url: `${agentUrl}/refine/`}),
+    // audit_agent points to local Python /audit/
+    "audit_agent":    new HttpAgent({url: `${agentUrl}/audit/`}),
+    // vision_agent maps to /vision-agent/ for image extraction
+    "vision_agent":    new HttpAgent({url: `${agentUrl}/vision-agent/`}),
+    // chatbot_agent for WhatsApp style interactions
+    "chatbot_agent":     new HttpAgent({url: `${agentUrl}/chatbot_agent/`}),
+    // enterprise_agent provides generalized knowledge & actions across Frestine
+    "enterprise_agent":  new HttpAgent({url: `${agentUrl}/enterprise_agent/`}),
+};
+
 const runtime = new CopilotRuntime({
-  agents: {
-    // Our FastAPI endpoints (Google ADK)
-    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
-    "refiner_agent":  new HttpAgent({url: "http://localhost:8000/refine/"}),
-    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
-    "audit_agent":    new HttpAgent({url: "http://localhost:8000/audit/"}),
-    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
-    "vision_agent":    new HttpAgent({url: "http://localhost:8000/vision-agent/"}),
-    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
-    "chatbot_agent":     new HttpAgent({url: "http://localhost:8000/chatbot_agent/"}),
-    // @ts-expect-error Type 'HttpAgent' is not assignable to type 'AbstractAgent'
-    "enterprise_agent":  new HttpAgent({url: "http://localhost:8000/enterprise_agent/"}),
-  }
+  agents: agents
 });
  
 // 3. Build a Next.js API route that handles the CopilotKit runtime requests.

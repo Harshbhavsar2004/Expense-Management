@@ -242,6 +242,6 @@ export const AdminAIBotStyles = `
 
   /* ── Sidebar footer ── */
   .aib-sidebar-footer {
-    background: linear-gradient(to top, rgba(10,10,12,1) 0%, rgba(10,10,12,0) 100%);
+    background: linear-gradient(to top, rgba(23,23,23,1) 0%, rgba(23,23,23,0) 100%);
   }
 `;

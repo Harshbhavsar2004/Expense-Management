@@ -14,7 +14,7 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
-from google.adk.tools import ToolContext
+from google.adk.tools import ToolContext, google_search, AgentTool
 from google.genai import types
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -136,6 +136,23 @@ MISMATCH TAG GUIDE — use this when explaining any flagged expense:
 9. per_person_limit_exceeded
    What it means: When the total meal amount is divided across all participants, the per-person share exceeds the meal policy limit for your city tier.
    What to do: Only the policy-allowed per-person amount will be reimbursed for each participant.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REIMBURSABLE AMOUNT RULES — FOLLOW EXACTLY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+When calling `get_reimbursable_amount_tool`, ALWAYS read the `reimbursable_amount` field
+from the expense object provided in context. NEVER independently calculate or guess this value.
+
+The following mismatch tags make an expense NON-REIMBURSABLE (reimbursable = 0):
+  - amount_mismatch       → claimed amount ≠ receipt amount; neither figure is trusted → ₹0
+  - duplicate_receipt     → same UTR already submitted elsewhere → ₹0
+  - failed_screenshot     → payment never completed → ₹0
+  - receipt_quality_issue → payment outcome unconfirmed → ₹0
+
+If an expense has ANY of the above tags in its mismatches list, you MUST pass reimbursable=0
+to `get_reimbursable_amount_tool`, regardless of what the claimed or receipt amount says.
+
+Do NOT call `get_reimbursable_amount_tool` more than once per expense.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AVAILABLE TOOLS:
@@ -265,6 +282,14 @@ def get_summary_report_tool(
 # AGENT
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Sub-agent dedicated to Google Search (single-tool requirement)
+_chatbot_search_agent = LlmAgent(
+    name="ChatbotSearchAgent",
+    model="gemini-2.5-flash",
+    instruction="Search the web using Google Search and return the results. Always cite sources.",
+    tools=[google_search],
+)
+
 chatbot_agent = LlmAgent(
     name="ChatbotAgent",
     model="gemini-2.5-flash",
@@ -279,6 +304,7 @@ chatbot_agent = LlmAgent(
         get_audit_timeline_tool,
         get_reimbursable_amount_tool,
         get_summary_report_tool,
+        AgentTool(agent=_chatbot_search_agent),
     ],
     before_agent_callback=chatbot_before_agent,
     before_model_callback=chatbot_before_model,

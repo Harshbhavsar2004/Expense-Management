@@ -30,7 +30,7 @@ export default function ChatSidebar({
   return (
     <aside className="aib-sidebar-in" style={{
       width: "248px",
-      background: "#000000",
+      background: "#171717",
       borderRight: "1px solid rgba(255,255,255,0.06)",
       display: "flex",
       flexDirection: "column",

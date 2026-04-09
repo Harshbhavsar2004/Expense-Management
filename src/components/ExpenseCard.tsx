@@ -48,12 +48,17 @@ export function ExpenseCard({ record, selected, onClick }: ExpenseCardProps) {
           {/* Date & Type */}
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[12px] font-semibold text-zinc-500 uppercase tracking-wider font-outfit">
-                {new Date(record.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+              <span className="text-[11px] font-bold text-zinc-900 uppercase tracking-widest font-outfit">
+                {record.date_range || record.receipts?.[0]?.transaction_date || 
+                  new Date(record.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
               </span>
               <span className="text-zinc-300">•</span>
-              <span className="text-[11px] font-medium text-zinc-400 truncate max-w-[100px]">
-                {record.application_id || "No App ID"}
+              <span className="text-[10px] font-medium text-zinc-400">
+                Sub: {new Date(record.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+              </span>
+              <span className="text-zinc-300">•</span>
+              <span className="text-[10px] font-bold text-blue-600 truncate max-w-[80px]">
+                {record.application_id || "No ID"}
               </span>
             </div>
             <h4 className="text-[15px] font-bold text-zinc-900 truncate leading-tight">
@@ -75,7 +80,7 @@ export function ExpenseCard({ record, selected, onClick }: ExpenseCardProps) {
           <div className="flex flex-col gap-1.5 sm:min-w-[120px]">
             <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold">Claimed</div>
             <div className="text-[16px] font-extrabold text-zinc-900 font-outfit tracking-tight">
-              ₹{record.claimed_amount_numeric?.toLocaleString("en-IN") || record.claimed_amount.replace('₹', '')}
+              ₹{record.claimed_amount_numeric?.toLocaleString("en-IN") || record.claimed_amount?.replace('₹', '') || "0"}
             </div>
           </div>
 
@@ -90,20 +95,20 @@ export function ExpenseCard({ record, selected, onClick }: ExpenseCardProps) {
 
       {/* Action/Status */}
       <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-        {!record.amount_match && record.verified ? (
-          <div className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-red-100 shadow-sm">
+        {isVerified ? (
+          <div className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-emerald-100 shadow-sm">
+            <CheckCircle2 size={14} />
+            Audit Cleared
+          </div>
+        ) : hasMismatches || !record.amount_match ? (
+          <div className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-rose-100 shadow-sm">
             <XCircle size={14} />
-            Amount Mismatch
+            Action Required
           </div>
         ) : (
-          <div className={cn(
-            "px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border shadow-sm",
-            isVerified 
-              ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
-              : "bg-amber-50 text-amber-600 border-amber-100"
-          )}>
-            {isVerified ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-            {isVerified ? "Audit Cleared" : "Awaiting Audit"}
+          <div className="px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border border-amber-100 shadow-sm">
+            <AlertCircle size={14} />
+            Awaiting Audit
           </div>
         )}
         <button className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors">

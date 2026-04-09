@@ -18,7 +18,7 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
-from google.adk.tools import ToolContext
+from google.adk.tools import ToolContext, google_search, AgentTool
 from google.genai import types
 from embedding_service import embed_expense_after_audit
 
@@ -307,8 +307,15 @@ def set_audit_result(
         per_person_limit_exceeded — Meal per person > policy limit
     """
     # Use pre-computed reimbursable from Python (authoritative).
-    # Override to ₹0 if blocking tags are present (LLM may not have set these at pre-flight).
-    BLOCKING = {"duplicate_receipt", "failed_screenshot", "receipt_quality_issue"}
+    # Override to ₹0 if any blocking tag is present.
+    # amount_mismatch is included: if the receipt doesn't match what was claimed,
+    # neither figure can be trusted — the employee must resubmit with the correct receipt.
+    BLOCKING = {
+        "duplicate_receipt",
+        "failed_screenshot",
+        "receipt_quality_issue",
+        "amount_mismatch",
+    }
     pre_computed = float(tool_context.state.get("_computed_reimbursable") or 0)
     if any(t in BLOCKING for t in mismatches):
         final_reimbursable = 0.0
@@ -624,6 +631,14 @@ def audit_after_model(
 # AGENT
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Sub-agent dedicated to Google Search (single-tool requirement)
+_audit_search_agent = LlmAgent(
+    name="AuditSearchAgent",
+    model="gemini-2.5-flash",
+    instruction="Search the web using Google Search and return the results. Always cite sources.",
+    tools=[google_search],
+)
+
 audit_agent = LlmAgent(
     name="AuditAgent",
     model="gemini-2.5-flash",
@@ -631,7 +646,7 @@ audit_agent = LlmAgent(
         Audit expense claims using the pre-computed facts in the system prompt.
         Apply all 9 mismatch rules. Call set_audit_result exactly once with your final verdict.
     """,
-    tools=[set_audit_result],
+    tools=[set_audit_result, AgentTool(agent=_audit_search_agent)],
     before_agent_callback=audit_before_agent,
     before_model_callback=audit_before_model,
     after_model_callback=audit_after_model,

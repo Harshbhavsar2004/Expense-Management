@@ -24,6 +24,7 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from google.adk.agents import LlmAgent
+from google.adk.tools import google_search
 
 # -----------------------------------------------------------------------------
 # RECEIPT EXTRACTION PROMPT
@@ -139,7 +140,7 @@ vision_router = APIRouter(prefix="/vision")
 @vision_router.get("/health")
 async def vision_health():
     """Health check for vision agent."""
-    print(f"[VisionAgent] ✓ ENDPOINT HIT: /vision/health (GET)", flush=True)
+    print(f"[VisionAgent] \u2713 ENDPOINT HIT: /vision/health (GET)", flush=True)
     return {"status": "ok", "agent": "VisionAgent", "mode": "direct_gemini_api", "endpoints": {
         "health": "GET /vision/health",
         "analyse": "POST /vision/analyse"
@@ -166,7 +167,7 @@ async def analyse_image(request: Request) -> JSONResponse:
         "data": { ... }   // structured receipt data or description string
     }
     """
-    print(f"[VisionAgent] ✓ ENDPOINT HIT: /vision/analyse (POST)", flush=True)
+    print(f"[VisionAgent] \u2713 ENDPOINT HIT: /vision/analyse (POST)", flush=True)
     try:
         body = await request.json()
         b64 = body.get("base64")
@@ -177,7 +178,7 @@ async def analyse_image(request: Request) -> JSONResponse:
         print(f"[VisionAgent] Request params - mode={mode}, mimeType={mime_type}, base64_len={len(b64) if b64 else 0}", flush=True)
 
         if not b64:
-            print(f"[VisionAgent] ✗ ERROR: Missing base64 field in request", flush=True)
+            print(f"[VisionAgent] \u2717 ERROR: Missing base64 field in request", flush=True)
             return JSONResponse({"success": False, "error": "Missing base64 field"}, status_code=400)
 
         print(f"[VisionAgent] Analysing image - mode={mode}, mimeType={mime_type}")
@@ -245,14 +246,14 @@ async def analyse_image(request: Request) -> JSONResponse:
             })
 
     except httpx.HTTPStatusError as e:
-        print(f"[VisionAgent] ✗ Gemini API error: HTTP {e.response.status_code}", flush=True)
+        print(f"[VisionAgent] \u2717 Gemini API error: HTTP {e.response.status_code}", flush=True)
         print(f"[VisionAgent]   Response: {e.response.text[:500]}", flush=True)
         return JSONResponse(
             {"success": False, "error": f"Gemini API error: {e.response.status_code}"},
             status_code=500,
         )
     except Exception as e:
-        print(f"[VisionAgent] ✗ Unexpected error: {type(e).__name__}: {e}", flush=True)
+        print(f"[VisionAgent] \u2717 Unexpected error: {type(e).__name__}: {e}", flush=True)
         import traceback
         traceback.print_exc()
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
@@ -269,4 +270,5 @@ vision_agent = LlmAgent(
     You help users analyse receipts, invoices, and other images related to expenses.
     While multimodal support is limited in the chat UI, you can discuss previously analysed images 
     or guide users on how to capture better receipt photos.""",
+    tools=[google_search],
 )

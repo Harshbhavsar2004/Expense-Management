@@ -22,7 +22,7 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
-from google.adk.tools import ToolContext
+from google.adk.tools import ToolContext, google_search, AgentTool
 from google.genai import types
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -167,6 +167,14 @@ def refiner_after_model(
 # AGENT
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Sub-agent dedicated to Google Search (single-tool requirement)
+_refiner_search_agent = LlmAgent(
+    name="RefinerSearchAgent",
+    model="gemini-2.5-flash",
+    instruction="Search the web using Google Search and return the results. Always cite sources.",
+    tools=[google_search],
+)
+
 input_refiner_agent = LlmAgent(
     name="InputRefinerAgent",
     model="gemini-2.5-flash",
@@ -176,7 +184,7 @@ input_refiner_agent = LlmAgent(
         Always call output_normalized_amount for amounts.
         Never skip calling a tool.
     """,
-    tools=[output_normalized_date, output_normalized_amount],
+    tools=[output_normalized_date, output_normalized_amount, AgentTool(agent=_refiner_search_agent)],
     before_agent_callback=refiner_before_agent,
     before_model_callback=refiner_before_model,
     after_model_callback=refiner_after_model,

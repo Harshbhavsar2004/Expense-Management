@@ -15,6 +15,8 @@ export async function GET(req: NextRequest) {
     const to = searchParams.get("to");
     const category = searchParams.get("category");
 
+    const mine = searchParams.get("mine") === "true";
+
     const { data: profile } = await supabase.from("users").select("role").eq("id", user.id).single();
     const isAdmin = profile?.role === "admin";
 
@@ -27,11 +29,13 @@ export async function GET(req: NextRequest) {
          verified, verified_at, mismatches,
          total_receipt_amount, amount_match, date_match,
          audit_explanation, audit_timeline, city, city_tier,
+         user_id,
+         users!inner(full_name, email, phone, role, organization, team, bank_verified),
          receipts(id, image_url, extracted_amount, transaction_date, transaction_time)`
       )
       .order("created_at", { ascending: false });
 
-    if (!isAdmin) {
+    if (!isAdmin || mine) {
       query = query.eq("user_id", user.id);
     }
 

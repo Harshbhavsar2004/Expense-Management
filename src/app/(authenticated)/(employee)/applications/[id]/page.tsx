@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, ShieldCheck, Clock, RefreshCw, Send, CheckCircle2,
-  AlertTriangle, X, Image as ImageIcon,
+  AlertTriangle, X, Image as ImageIcon, ExternalLink,
   Utensils, UtensilsCrossed, Car, Hotel, Fuel, Phone, Heart, Package, Plane,
   Receipt, ShoppingBag, ShoppingCart, Wifi, Coffee, Croissant, MapPin, Building2,
   Eye, EyeOff, BadgeCheck, CalendarDays,
@@ -137,12 +137,6 @@ function ExpenseCard({
   const { claimed, approved } = resolveAmounts(expense);
   const hasDiff       = Math.round(approved) < Math.round(claimed);
 
-  const rawDate = expense.date || (expense as any).normalized_date_range || (expense as any).date_range;
-  const date    = rawDate
-    ? (rawDate.length === 10
-        ? new Date(rawDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-        : rawDate)
-    : "—";
 
   const auditReason = expense.audit_result?.reason
     || (expense as any).mismatches?.[0]?.replace(/_/g, " ");
@@ -172,47 +166,60 @@ function ExpenseCard({
 
         {/* Description + badges + meta */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <span className="font-display font-bold text-slate-800 text-[13px] truncate max-w-[220px]">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="font-display font-bold text-slate-800 text-[14px] truncate max-w-[240px]">
               {(expense as any).description || expense.expense_type || "Expense"}
             </span>
 
-            {isAudited ? (
-              hasMismatch ? (
-                <span className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full text-[10px] font-bold bg-rose-50 text-rose-500 border border-rose-100">
-                  <AlertTriangle size={8} /> Mismatch
-                </span>
+            <div className="flex items-center gap-1.5">
+              {isAudited ? (
+                hasMismatch ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[9px] font-bold bg-rose-50 text-rose-500 border border-rose-100 uppercase tracking-tighter">
+                    <AlertTriangle size={8} /> Mismatch
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase tracking-tighter">
+                    <BadgeCheck size={8} /> Audited
+                  </span>
+                )
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
-                  <BadgeCheck size={8} /> Audited
+                <span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[9px] font-semibold bg-slate-50 text-slate-400 border border-slate-200 uppercase tracking-tighter">
+                  <CircleDot size={8} /> Pending
                 </span>
-              )
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full text-[10px] font-semibold bg-slate-50 text-slate-400 border border-slate-200">
-                <CircleDot size={8} /> Not Audited
-              </span>
-            )}
+              )}
 
-            {expense.verified && (
-              <span className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full text-[10px] font-bold bg-violet-50 text-blue-500 border border-blue-100">
-                <ShieldCheck size={8} /> Verified
-              </span>
-            )}
+              {expense.verified && (
+                <span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[9px] font-bold bg-blue-50 text-blue-500 border border-blue-100 uppercase tracking-tighter">
+                  <ShieldCheck size={8} /> Verified
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-semibold text-slate-400 capitalize">{expense.expense_type}</span>
-            <span className="text-slate-300 text-[10px]">·</span>
-            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
-              <CalendarDays size={10} /> {date}
-            </span>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Only show category if it's NOT the title */}
+            {(expense as any).description && (expense as any).description.toLowerCase() !== (expense.expense_type || "").toLowerCase() && (
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{expense.expense_type}</span>
+            )}
+            
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <CalendarDays size={11} className="text-slate-300" />
+              <span className="font-bold text-slate-600">
+                {expense.date_range || expense.receipts?.[0]?.transaction_date || (expense as any).normalized_date_range || 
+                  (expense.created_at ? new Date(expense.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—")}
+              </span>
+              <span className="text-[10px] opacity-40 font-medium">
+                (Sub: {expense.created_at ? new Date(expense.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"})
+              </span>
+            </div>
+
             {hasMismatch && auditReason && (
-              <>
-                <span className="text-slate-300 text-[10px]">·</span>
-                <span className="inline-flex items-center gap-1 text-[11px] text-rose-400 font-medium truncate max-w-[180px]">
-                  <AlertTriangle size={9} /> {auditReason}
+              <div className="flex items-center gap-1.5 bg-rose-50/50 px-2 py-0.5 rounded-lg border border-rose-100/50">
+                <AlertTriangle size={10} className="text-rose-400" />
+                <span className="text-[10px] text-rose-500 font-bold uppercase tracking-tight">
+                  {auditReason}
                 </span>
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -247,15 +254,194 @@ function ExpenseCard({
   );
 }
 
+// ─── Audit Text Renderer ──────────────────────────────────────────────────────
+function renderAuditText(text: string, onViewDuplicate: (id: string) => void): React.ReactNode {
+  const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = uuidRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const uuid = match[0];
+    parts.push(
+      <button
+        key={key++}
+        onClick={(e) => { e.stopPropagation(); onViewDuplicate(uuid); }}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-100 text-blue-600 border border-blue-200 text-[10px] font-bold hover:bg-blue-600 hover:text-white transition-colors mx-0.5 align-middle"
+      >
+        <ExternalLink size={9} /> View Claim
+      </button>
+    );
+    lastIndex = match.index + match[0].length;
+    key++;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts.length > 0 ? <>{parts}</> : <>{text}</>;
+}
+
+// ─── Duplicate Expense Panel ──────────────────────────────────────────────────
+function DuplicateExpensePanel({
+  expenseId,
+  onClose,
+  onViewScreenshot,
+}: {
+  expenseId: string | null;
+  onClose: () => void;
+  onViewScreenshot: (url: string) => void;
+}) {
+  const [expense, setExpense] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!expenseId) return;
+    setLoading(true);
+    setExpense(null);
+    fetch(`/api/expenses/${expenseId}`)
+      .then((r) => r.json())
+      .then((data) => { setExpense(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [expenseId]);
+
+  if (!expenseId) return null;
+
+  const screenshotUrl = expense ? resolveScreenshotUrl(expense) : null;
+  const hasMismatch = expense && (
+    expense.audit_result?.mismatch === true ||
+    (Array.isArray(expense.mismatches) && expense.mismatches.length > 0)
+  );
+  const claimed = expense
+    ? (expense.amount ?? expense.claimed_amount_numeric ?? 0)
+    : 0;
+  const mismatches: string[] = expense && Array.isArray(expense.mismatches)
+    ? expense.mismatches
+    : [];
+
+  return (
+    <div className="w-80 shrink-0 border-l border-slate-100 bg-slate-50 flex flex-col overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-rose-400" />
+          <span className="font-display font-bold text-slate-700 text-sm">Duplicate Claim</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+        {loading ? (
+          <>
+            <div className="h-32 rounded-2xl bg-slate-200 animate-pulse" />
+            <div className="h-16 rounded-xl bg-slate-200 animate-pulse" />
+            <div className="h-24 rounded-xl bg-slate-200 animate-pulse" />
+          </>
+        ) : !expense ? (
+          <div className="flex flex-col items-center justify-center h-40 text-slate-400">
+            <AlertTriangle size={24} className="mb-2 opacity-40" />
+            <p className="text-xs font-medium">Could not load claim</p>
+          </div>
+        ) : (
+          <>
+            {/* Warning banner */}
+            <div className="rounded-xl bg-rose-50 border border-rose-100 px-4 py-3 flex items-start gap-2">
+              <AlertTriangle size={13} className="text-rose-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] font-semibold text-rose-600 leading-relaxed">
+                This claim shares a UTR number with your expense and has been flagged as a duplicate.
+              </p>
+            </div>
+
+            {/* Screenshot */}
+            {screenshotUrl && (
+              <div className="group/img relative cursor-zoom-in" onClick={() => onViewScreenshot(screenshotUrl)}>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Payment Screenshot</p>
+                <div className="relative rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
+                  <img
+                    src={screenshotUrl}
+                    alt="Payment Screenshot"
+                    className="w-full object-contain max-h-48 transition-transform duration-300 group-hover/img:scale-105"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Key details */}
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Claim Details</p>
+              <div className="flex flex-col gap-2">
+                {[
+                  { label: "Type",        value: expense.expense_type || "—" },
+                  { label: "Amount",      value: `₹${Number(claimed).toLocaleString("en-IN")}` },
+                  { label: "Date",        value: expense.date_range || expense.date || "—" },
+                  { label: "Application", value: expense.application_id || "—" },
+                  { label: "Submitted",   value: expense.created_at
+                      ? new Date(expense.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+                      : "—" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex items-center justify-between px-3 py-2 bg-white rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+                    <span className="text-[11px] font-semibold text-slate-700">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mismatches */}
+            {mismatches.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Issues</p>
+                <div className="flex flex-col gap-1.5">
+                  {mismatches.map((m) => (
+                    <div key={m} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-50 border border-rose-100">
+                      <AlertTriangle size={11} className="text-rose-400 shrink-0" />
+                      <span className="text-[11px] font-semibold text-rose-500 capitalize">{m.replace(/_/g, " ")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Status */}
+            <div className={`rounded-xl px-4 py-3 flex items-center gap-2 border ${
+              hasMismatch
+                ? "bg-rose-50 border-rose-100"
+                : expense.verified
+                ? "bg-emerald-50 border-emerald-100"
+                : "bg-slate-100 border-slate-200"
+            }`}>
+              <ShieldCheck size={13} className={hasMismatch ? "text-rose-400" : expense.verified ? "text-emerald-500" : "text-slate-400"} />
+              <span className={`text-[11px] font-semibold ${hasMismatch ? "text-rose-600" : expense.verified ? "text-emerald-600" : "text-slate-500"}`}>
+                {hasMismatch ? "Audit flagged mismatches" : expense.verified ? "Audit cleared" : "Not yet audited"}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Expense Detail Panel ─────────────────────────────────────────────────────
 function ExpenseDetailPanel({
   expense,
   onClose,
   onViewScreenshot,
+  onViewDuplicate,
 }: {
   expense: ExpenseRow | null;
   onClose: () => void;
   onViewScreenshot: (url: string) => void;
+  onViewDuplicate: (id: string) => void;
 }) {
   if (!expense) return null;
 
@@ -355,7 +541,7 @@ function ExpenseDetailPanel({
               }`}
             >
               <ShieldCheck size={10} className="inline mr-1.5 opacity-60" />
-              {auditNote}
+              {renderAuditText(auditNote, onViewDuplicate)}
             </div>
           </div>
         )}
@@ -424,8 +610,9 @@ export default function ApplicationDetailsPage() {
   const [fadeOut,        setFadeOut]        = useState(false);
   const [submitting,     setSubmitting]     = useState(false);
   const [user,           setUser]           = useState<any>(null);
-  const [selectedRecord, setSelectedRecord] = useState<ExpenseRow | null>(null);
-  const [screenshotUrl,    setScreenshotUrl]    = useState<string | null>(null);
+  const [selectedRecord,     setSelectedRecord]     = useState<ExpenseRow | null>(null);
+  const [duplicateExpenseId, setDuplicateExpenseId] = useState<string | null>(null);
+  const [screenshotUrl,      setScreenshotUrl]      = useState<string | null>(null);
   const [activeCategory,   setActiveCategory]   = useState("all");
   const [submitSummary,  setSubmitSummary]  = useState<{
     reimbursable_amount: number; reimbursable_count: number;
@@ -635,7 +822,10 @@ export default function ApplicationDetailsPage() {
                     key={expense.id}
                     expense={expense}
                     selected={selectedRecord?.id === expense.id}
-                    onClick={() => setSelectedRecord((prev) => prev?.id === expense.id ? null : expense)}
+                    onClick={() => {
+                      setDuplicateExpenseId(null);
+                      setSelectedRecord((prev) => prev?.id === expense.id ? null : expense);
+                    }}
                     onViewScreenshot={setScreenshotUrl}
                   />
                 ))}
@@ -647,7 +837,14 @@ export default function ApplicationDetailsPage() {
 
         <ExpenseDetailPanel
           expense={selectedRecord}
-          onClose={() => setSelectedRecord(null)}
+          onClose={() => { setSelectedRecord(null); setDuplicateExpenseId(null); }}
+          onViewScreenshot={setScreenshotUrl}
+          onViewDuplicate={setDuplicateExpenseId}
+        />
+
+        <DuplicateExpensePanel
+          expenseId={duplicateExpenseId}
+          onClose={() => setDuplicateExpenseId(null)}
           onViewScreenshot={setScreenshotUrl}
         />
 

@@ -6,36 +6,43 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/* ───────────────────── Date grouping helper ─────────────────── */
-
-export function groupSessionsByDate(sessions: ChatSession[]): { label: string; items: ChatSession[] }[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  const thisWeekStart = new Date(today); thisWeekStart.setDate(today.getDate() - 7);
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const groups: Record<string, ChatSession[]> = {
-    "Today": [], "Yesterday": [], "This Week": [], "This Month": [], "Older": [],
-  };
-
-  for (const s of sessions) {
-    const d = new Date(s.createdAt);
-    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    if (day >= today)               groups["Today"].push(s);
-    else if (day >= yesterday)      groups["Yesterday"].push(s);
-    else if (day >= thisWeekStart)  groups["This Week"].push(s);
-    else if (day >= thisMonthStart) groups["This Month"].push(s);
-    else                            groups["Older"].push(s);
-  }
-
-  return Object.entries(groups)
-    .filter(([, items]) => items.length > 0)
-    .map(([label, items]) => ({ label, items }));
+export function initials(name: string | null | undefined): string {
+  if (!name) return "?";
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
 }
 
-/* ───────────────────── Initials helper ─────────────────── */
+export function groupSessionsByDate(
+  sessions: ChatSession[]
+): { label: string; items: ChatSession[] }[] {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfYesterday = new Date(startOfToday.getTime() - 86_400_000);
+  const startOf7DaysAgo = new Date(startOfToday.getTime() - 7 * 86_400_000);
+  const startOf30DaysAgo = new Date(startOfToday.getTime() - 30 * 86_400_000);
 
-export function initials(name: string): string {
-  return name.split(" ").map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2);
+  const buckets: Record<string, ChatSession[]> = {
+    Today: [],
+    Yesterday: [],
+    "Previous 7 days": [],
+    "Previous 30 days": [],
+    Older: [],
+  };
+
+  for (const session of sessions) {
+    const d = new Date(session.createdAt);
+    if (d >= startOfToday) buckets["Today"].push(session);
+    else if (d >= startOfYesterday) buckets["Yesterday"].push(session);
+    else if (d >= startOf7DaysAgo) buckets["Previous 7 days"].push(session);
+    else if (d >= startOf30DaysAgo) buckets["Previous 30 days"].push(session);
+    else buckets["Older"].push(session);
+  }
+
+  return Object.entries(buckets)
+    .filter(([, items]) => items.length > 0)
+    .map(([label, items]) => ({ label, items }));
 }

@@ -168,7 +168,8 @@ function BarChartCard({ chart }: { chart: DashboardChart }) {
   const yKey = chart.y_key || "value";
 
   const filtered = useMemo(() => {
-    let d = (chart.data || []).filter((r: any) =>
+    const dataArr = Array.isArray(chart.data) ? chart.data : [];
+    let d = dataArr.filter((r: any) =>
       String(r[xKey] || r.label || "").toLowerCase().includes(search.toLowerCase())
     );
     if (sort === "asc")  d = [...d].sort((a, b) => (a[yKey] || 0) - (b[yKey] || 0));
@@ -261,7 +262,8 @@ function DonutChartCard({ chart }: { chart: DashboardChart }) {
   const valueKey    = chart.value_key   || "value";
 
   const filtered = useMemo(() => {
-    let d = (chart.data || []).filter((r: any) =>
+    const dataArr = Array.isArray(chart.data) ? chart.data : [];
+    let d = dataArr.filter((r: any) =>
       String(r[categoryKey] || r.label || "").toLowerCase().includes(search.toLowerCase())
     );
     if (sort === "asc")  d = [...d].sort((a, b) => (a[valueKey] || 0) - (b[valueKey] || 0));
@@ -314,10 +316,12 @@ function LineChartCard({ chart }: { chart: DashboardChart }) {
   const xKey = chart.x_key || "label";
   const yKey = chart.y_key || "value";
 
-  const filtered = useMemo(() =>
-    (chart.data || []).filter((r: any) =>
+  const filtered = useMemo(() => {
+    const dataArr = Array.isArray(chart.data) ? chart.data : [];
+    return dataArr.filter((r: any) =>
       String(r[xKey] || r.label || "").toLowerCase().includes(search.toLowerCase())
-    ), [chart.data, search, xKey]);
+    );
+  }, [chart.data, search, xKey]);
 
   return (
     <div style={{ ...cardStyle, flex: "1 1 100%" }}>
@@ -364,7 +368,9 @@ function TableCard({ chart }: { chart: any }) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const rawRows: DashboardTableRow[] = useMemo(() => {
-    return (chart.rows || chart.data || []).map((r: any) =>
+    const arr = chart.rows || chart.data || [];
+    const safeArr = Array.isArray(arr) ? arr : [];
+    return safeArr.map((r: any) =>
       typeof r !== "object" || r === null ? { value: r } : r
     );
   }, [chart]);
@@ -487,11 +493,16 @@ function SummaryStrip({ charts }: { charts: DashboardChart[] }) {
     charts.reduce((sum, c) => {
       if (c.type === "table") return sum;
       const vKey = c.value_key || c.y_key || "value";
-      return sum + (c.data || []).reduce((s, d: any) => s + (Number(d[vKey] || d.value || 0)), 0);
+      const dataArr = Array.isArray(c.data) ? c.data : [];
+      return sum + dataArr.reduce((s, d: any) => s + (Number(d[vKey] || d.value || 0)), 0);
     }, 0), [charts]);
 
   const itemCount = useMemo(() =>
-    charts.reduce((s, c: any) => s + (c.data?.length || c.rows?.length || 0), 0), [charts]);
+    charts.reduce((s, c: any) => {
+      const dataArr = Array.isArray(c.data) ? c.data : [];
+      const rowsArr = Array.isArray(c.rows) ? c.rows : [];
+      return s + (dataArr.length || rowsArr.length || 0);
+    }, 0), [charts]);
 
   const units = new Set(charts.map(c => c.unit).filter(Boolean));
   const unit = units.size === 1 ? [...units][0] : "";

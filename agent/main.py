@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from google.adk.agents import LlmAgent
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
 from composio import Composio
+from google.adk.tools import google_search, AgentTool, ToolContext
 from composio_google_adk import GoogleAdkProvider
 
 load_dotenv()
@@ -52,11 +53,12 @@ def _get_auth_configs() -> Dict[str, str]:
     mapping = {
         "gmail":          "COMPOSIO_GMAIL_AUTH_CONFIG",
         "slack":          "COMPOSIO_SLACK_AUTH_CONFIG",
-        "googlecalendar": "COMPOSIO_CALENDAR_AUTH_CONFIG",
+        "google_calendar": "COMPOSIO_CALENDAR_AUTH_CONFIG",
         "googlesheets":   "COMPOSIO_SHEETS_AUTH_CONFIG",
         "googledrive":    "COMPOSIO_DRIVE_AUTH_CONFIG",
         "notion":         "COMPOSIO_NOTION_AUTH_CONFIG",
         "hubspot":        "COMPOSIO_HUBSPOT_AUTH_CONFIG",
+        "zoho_invoice":   "COMPOSIO_ZOHO_INVOICE_AUTH_CONFIG",
     }
     return {toolkit: os.getenv(env_key, "") for toolkit, env_key in mapping.items() if os.getenv(env_key, "")}
 
@@ -81,6 +83,15 @@ def _build_enterprise_agent(admin_user_id: str) -> LlmAgent:
         generate_dashboard, save_dashboard,
     )
 
+    # Sub-agent dedicated to Google Search (ADK requires google_search
+    # to be the ONLY tool in its agent)
+    _search_sub_agent = LlmAgent(
+        name="WebSearchAgent",
+        model="gemini-2.5-flash",
+        instruction="Search the web using Google Search and return the results. Always cite sources.",
+        tools=[google_search],
+    )
+
     base_tools = [
         resolve_user, get_user_stats, compare_two_users,
         semantic_search_expenses, get_applications, get_policies,
@@ -88,6 +99,7 @@ def _build_enterprise_agent(admin_user_id: str) -> LlmAgent:
         get_mismatch_breakdown, search_expenses_by_amount, get_chat_history,
         get_users, get_flagged_expenses, get_expenses_detail,
         generate_dashboard, save_dashboard,
+        AgentTool(agent=_search_sub_agent),
     ]
 
     composio_tools = _load_composio_tools(admin_user_id) if admin_user_id else []
@@ -223,7 +235,10 @@ if _voice_agent_available:
 # middleware or route sees it.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

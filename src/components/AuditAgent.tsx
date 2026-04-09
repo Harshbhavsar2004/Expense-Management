@@ -12,7 +12,6 @@ import {
   X,
   ShieldCheck,
   RotateCcw,
-  ChevronDown,
   Sparkles,
   Mic,
   MicOff,
@@ -21,10 +20,21 @@ import {
   DollarSign,
   FileText,
   Download,
-  CheckCircle,
+  GripHorizontal,
+  Maximize2,
+  Terminal,
 } from "lucide-react";
+import {
+  motion,
+  AnimatePresence,
+  useDragControls,
+  useMotionValue,
+} from "framer-motion";
 import { ExpenseRow } from "./ExpensesTable";
 
+/* ─────────────────────────────────────
+   Types
+───────────────────────────────────── */
 interface AuditAgentProps {
   selectedRecord: ExpenseRow | null;
   onClose: () => void;
@@ -33,10 +43,11 @@ interface AuditAgentProps {
   onSubmitForApproval?: () => Promise<void>;
 }
 
+/* ─────────────────────────────────────
+   Helpers
+───────────────────────────────────── */
 function stripEmbeddings<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map(stripEmbeddings) as unknown as T;
-  }
+  if (Array.isArray(value)) return value.map(stripEmbeddings) as unknown as T;
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
@@ -47,9 +58,6 @@ function stripEmbeddings<T>(value: T): T {
   return value;
 }
 
-/* ─────────────────────────────────────
-   CSV / Excel download utility
-───────────────────────────────────── */
 function downloadExcel(application: any, expenses: ExpenseRow[]) {
   const headers = [
     "Expense ID","Date","Type","Sub Category",
@@ -99,50 +107,23 @@ function downloadExcel(application: any, expenses: ExpenseRow[]) {
 }
 
 /* ─────────────────────────────────────
-   Inline chat option buttons
-   (rendered by the agent after greeting)
+   Chat options
 ───────────────────────────────────── */
-interface ChatOptionsProps {
-  onSelect: (msg: string) => void;
-}
+interface ChatOptionsProps { onSelect: (msg: string) => void }
 function ChatOptions({ onSelect }: ChatOptionsProps) {
   const options = [
-    {
-      icon: <AlertCircle size={14} />,
-      label: "Mismatches",
-      msg: "Explain all the mismatches found in this application",
-    },
-    {
-      icon: <Clock size={14} />,
-      label: "Audit Timeline",
-      msg: "Show me the full audit timeline for all expenses",
-    },
-    {
-      icon: <DollarSign size={14} />,
-      label: "Reimbursable",
-      msg: "What are the reimbursable amounts for each expense based on policy?",
-    },
-    {
-      icon: <FileText size={14} />,
-      label: "Summary",
-      msg: "Give me a full summary report of this expense application",
-    },
-    {
-      icon: <ShieldCheck size={14} />,
-      label: "Submit Now",
-      msg: "Submit this application for approval",
-    },
+    { icon: <AlertCircle size={14} />, label: "Mismatches",    msg: "Explain all the mismatches found in this application" },
+    { icon: <Clock size={14} />,        label: "Audit Timeline", msg: "Show me the full audit timeline for all expenses" },
+    { icon: <DollarSign size={14} />,   label: "Reimbursable",  msg: "What are the reimbursable amounts for each expense based on policy?" },
+    { icon: <FileText size={14} />,     label: "Summary",       msg: "Give me a full summary report of this expense application" },
+    { icon: <ShieldCheck size={14} />,  label: "Submit Now",    msg: "Submit this application for approval" },
   ];
   return (
     <div className="ea-chat-options">
       <span className="ea-chat-options-label">CHOOSE AN OPTION</span>
       <div className="ea-chat-options-grid">
         {options.map((o) => (
-          <button
-            key={o.label}
-            className="ea-chat-option-btn"
-            onClick={() => onSelect(o.msg)}
-          >
+          <button key={o.label} className="ea-chat-option-btn" onClick={() => onSelect(o.msg)}>
             <span className="ea-chat-option-icon">{o.icon}</span>
             <span className="ea-chat-option-text">{o.label}</span>
           </button>
@@ -161,9 +142,7 @@ function MismatchCard({ data }: { data: any }) {
     <div className="ea-card">
       <div className="ea-card-header" style={{ background: "#FEF3C7", borderColor: "#FDE68A" }}>
         <AlertCircle size={13} color="#D97706" />
-        <span style={{ color: "#92400E", fontWeight: 600, fontSize: 12 }}>
-          Mismatch — {data.expense_type}
-        </span>
+        <span style={{ color: "#92400E", fontWeight: 600, fontSize: 12 }}>Mismatch — {data.expense_type}</span>
       </div>
       <div className="ea-card-body">
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -171,15 +150,7 @@ function MismatchCard({ data }: { data: any }) {
             <div key={m} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span className="ea-badge ea-badge-amber" style={{ alignSelf: "flex-start" }}>{m.replace(/_/g, " ")}</span>
               {sources[m] && (
-                <div style={{
-                  background: "#FFFBEB",
-                  border: "1px solid #FDE68A",
-                  borderRadius: 6,
-                  padding: "5px 8px",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 5,
-                }}>
+                <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 6, padding: "5px 8px", display: "flex", alignItems: "flex-start", gap: 5 }}>
                   <span style={{ fontSize: 10, color: "#B45309", flexShrink: 0, marginTop: 1 }}>⊙</span>
                   <span style={{ fontSize: 11, color: "#78350F", lineHeight: 1.4 }}>{sources[m]}</span>
                 </div>
@@ -197,9 +168,7 @@ function TimelineCard({ data }: { data: any }) {
     <div className="ea-card">
       <div className="ea-card-header" style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }}>
         <Clock size={13} color="#2563EB" />
-        <span style={{ color: "#1E40AF", fontWeight: 600, fontSize: 12 }}>
-          Audit Timeline — {data.expense_type}
-        </span>
+        <span style={{ color: "#1E40AF", fontWeight: 600, fontSize: 12 }}>Audit Timeline — {data.expense_type}</span>
       </div>
       <div className="ea-card-body">
         {(data.steps ?? []).map((step: string, i: number) => (
@@ -219,9 +188,7 @@ function ReimbursableCard({ data }: { data: any }) {
     <div className="ea-card">
       <div className="ea-card-header" style={{ background: "#ECFDF5", borderColor: "#A7F3D0" }}>
         <DollarSign size={13} color="#059669" />
-        <span style={{ color: "#065F46", fontWeight: 600, fontSize: 12 }}>
-          Reimbursable — {data.expense_type}
-        </span>
+        <span style={{ color: "#065F46", fontWeight: 600, fontSize: 12 }}>Reimbursable — {data.expense_type}</span>
       </div>
       <div className="ea-card-body">
         <div className="ea-amount-row">
@@ -232,19 +199,11 @@ function ReimbursableCard({ data }: { data: any }) {
           <span className="ea-amount-sep">→</span>
           <div className="ea-amount-item">
             <span className="ea-amount-label">Reimbursable</span>
-            <span className="ea-amount-value" style={{ color: isOver ? "#DC2626" : "#059669" }}>
-              ₹{data.reimbursable}
-            </span>
+            <span className="ea-amount-value" style={{ color: isOver ? "#DC2626" : "#059669" }}>₹{data.reimbursable}</span>
           </div>
         </div>
-        {isOver && (
-          <p className="ea-card-text" style={{ color: "#991B1B", marginTop: 6 }}>
-            Exceeds policy cap by ₹{data.claimed - data.reimbursable}
-          </p>
-        )}
-        {data.policy_note && (
-          <p className="ea-card-text" style={{ marginTop: 4 }}>{data.policy_note}</p>
-        )}
+        {isOver && <p className="ea-card-text" style={{ color: "#991B1B", marginTop: 6 }}>Exceeds policy cap by ₹{data.claimed - data.reimbursable}</p>}
+        {data.policy_note && <p className="ea-card-text" style={{ marginTop: 4 }}>{data.policy_note}</p>}
       </div>
     </div>
   );
@@ -279,13 +238,28 @@ function SummaryCard({ data, onDownload }: { data: any; onDownload: () => void }
           </div>
         )}
         <button className="ea-download-btn" onClick={onDownload}>
-          <Download size={13} />
-          Download Excel Report
+          <Download size={13} /> Download Excel Report
         </button>
       </div>
     </div>
   );
 }
+
+/* ─────────────────────────────────────
+   Size / resize constants
+───────────────────────────────────── */
+const DEFAULT_W = 750;
+const DEFAULT_H = 580;
+const MIN_W = 360;
+const MAX_W = 1100;
+const MIN_H = 300;
+const MAX_H = 860;
+
+/* Terminal mode */
+const TERMINAL_DEFAULT_H = 300;
+const TERMINAL_MIN_H = 140;
+const TERMINAL_MAX_H = 620;
+const SNAP_ZONE_PX = 110; // px from bottom edge to trigger snap preview
 
 /* ─────────────────────────────────────
    Main component
@@ -300,23 +274,120 @@ export function AuditAgent({
   const [isOpen, setIsOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
+  const [size, setSize] = useState({ w: DEFAULT_W, h: DEFAULT_H });
+  const [terminalMode, setTerminalMode] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState(TERMINAL_DEFAULT_H);
+  const [snapPreview, setSnapPreview] = useState(false);
+  const [sidebarLeft, setSidebarLeft] = useState(236);
   const recognitionRef = useRef<any>(null);
 
+  /* ── Framer Motion drag ── */
+  const dragControls = useDragControls();
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    motionX.set(window.innerWidth - 28 - DEFAULT_W);
+    motionY.set(window.innerHeight - 92 - DEFAULT_H);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Resize ── */
+  const handleResize = (e: React.PointerEvent, dir: "se" | "s" | "e") => {
+    // Block both React synthetic and native DOM listeners (including framer-motion internals)
+    e.preventDefault();
+    e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
+
+    // Capture pointer so moves are tracked even when cursor leaves the handle
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = size.w;
+    const startH = size.h;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      setSize({
+        w: dir !== "s" ? Math.min(MAX_W, Math.max(MIN_W, startW + dx)) : startW,
+        h: dir !== "e" ? Math.min(MAX_H, Math.max(MIN_H, startH + dy)) : startH,
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  /* ── Terminal resize (drags top edge upward) ── */
+  const handleTerminalResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    const startY = e.clientY;
+    const startH = terminalHeight;
+
+    const onMove = (ev: PointerEvent) => {
+      const dy = ev.clientY - startY; // negative when dragging up
+      setTerminalHeight(Math.min(TERMINAL_MAX_H, Math.max(TERMINAL_MIN_H, startH - dy)));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  /* ── Pop terminal back out to floating ── */
+  const popOutFromTerminal = () => {
+    setTerminalMode(false);
+    if (typeof window !== "undefined") {
+      motionX.set(Math.max(20, (window.innerWidth - size.w) / 2));
+      motionY.set(Math.max(20, (window.innerHeight - size.h) / 2));
+    }
+  };
+
+  /* ── Snap-to-terminal detection while dragging ── */
+  const onDragUpdate = () => {
+    if (typeof window === "undefined") return;
+    const bottom = motionY.get() + size.h;
+    const nearBottom = bottom > window.innerHeight - SNAP_ZONE_PX;
+    if (nearBottom) {
+      const sidebar = document.getElementById("employee-sidebar");
+      setSidebarLeft(sidebar ? sidebar.getBoundingClientRect().width : 236);
+    }
+    setSnapPreview(nearBottom);
+  };
+
+  const onDragEnd = () => {
+    if (typeof window === "undefined") return;
+    const bottom = motionY.get() + size.h;
+    if (bottom > window.innerHeight - SNAP_ZONE_PX) {
+      // Measure the actual sidebar width at snap time (handles collapsed/expanded)
+      const sidebar = document.getElementById("employee-sidebar");
+      setSidebarLeft(sidebar ? sidebar.getBoundingClientRect().width : 236);
+      setTerminalMode(true);
+    }
+    setSnapPreview(false);
+  };
+
   /* ── Readable context ── */
-useCopilotReadable({ description: "Current expense application", value: stripEmbeddings(application) });
-useCopilotReadable({ description: "All expenses in this application", value: stripEmbeddings(expenses) });
-useCopilotReadable({ description: "Currently selected expense record", value: stripEmbeddings(selectedRecord) });
+  useCopilotReadable({ description: "Current expense application", value: stripEmbeddings(application) });
+  useCopilotReadable({ description: "All expenses in this application", value: stripEmbeddings(expenses) });
+  useCopilotReadable({ description: "Currently selected expense record", value: stripEmbeddings(selectedRecord) });
 
   /* ── Actions ── */
-
-  /**
-   * showQuickOptions — agent calls this after its greeting to render
-   * the inline option buttons inside the chat bubble area.
-   */
   useCopilotAction({
     name: "show_quick_options_tool",
-    description:
-      "Always call this tool immediately after your first greeting message to show the user their available quick options as interactive buttons inside the chat.",
+    description: "Always call this tool immediately after your first greeting message to show the user their available quick options as interactive buttons inside the chat.",
     parameters: [],
     handler: async () => "Options displayed.",
     render: () => {
@@ -328,7 +399,6 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
               id: Math.random().toString(36).substring(7),
               role: "user",
               content: msg,
-              // Mock methods that CopilotKit core/ui might call on message objects
               isResultMessage: () => false,
               isExecutionMessage: () => false,
               isTextMessage: () => true,
@@ -364,14 +434,7 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
     ],
     handler: async ({ expense_id }) => `Mismatch explained for expense ${expense_id}.`,
     render: ({ args }) => (
-      <MismatchCard
-        data={{
-          expense_type: args.expense_type ?? "Expense",
-          explanation:  args.explanation  ?? "",
-          mismatches:   args.mismatches   ?? [],
-          sources:      args.sources      ?? {},
-        }}
-      />
+      <MismatchCard data={{ expense_type: args.expense_type ?? "Expense", explanation: args.explanation ?? "", mismatches: args.mismatches ?? [], sources: args.sources ?? {} }} />
     ),
   });
 
@@ -385,12 +448,7 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
     ],
     handler: async ({ expense_id }) => `Audit timeline shown for expense ${expense_id}.`,
     render: ({ args }) => (
-      <TimelineCard
-        data={{
-          expense_type: args.expense_type ?? "Expense",
-          steps:        args.steps        ?? [],
-        }}
-      />
+      <TimelineCard data={{ expense_type: args.expense_type ?? "Expense", steps: args.steps ?? [] }} />
     ),
   });
 
@@ -406,21 +464,13 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
     ],
     handler: async ({ expense_id }) => `Reimbursable amount shown for expense ${expense_id}.`,
     render: ({ args }) => (
-      <ReimbursableCard
-        data={{
-          expense_type: args.expense_type ?? "Expense",
-          claimed:      args.claimed      ?? 0,
-          reimbursable: args.reimbursable ?? 0,
-          policy_note:  args.policy_note  ?? "",
-        }}
-      />
+      <ReimbursableCard data={{ expense_type: args.expense_type ?? "Expense", claimed: args.claimed ?? 0, reimbursable: args.reimbursable ?? 0, policy_note: args.policy_note ?? "" }} />
     ),
   });
 
   useCopilotAction({
     name: "get_summary_report_tool",
-    description:
-      "Renders a full summary card of the expense application with totals, flag counts, and a download button.",
+    description: "Renders a full summary card of the expense application with totals, flag counts, and a download button.",
     parameters: [
       { name: "total_claimed",      type: "number", required: true },
       { name: "total_reimbursable", type: "number", required: true },
@@ -430,10 +480,7 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
     ],
     handler: async () => "Summary report generated.",
     render: ({ args }) => (
-      <SummaryCard
-        data={args}
-        onDownload={() => downloadExcel(application, expenses ?? [])}
-      />
+      <SummaryCard data={args} onDownload={() => downloadExcel(application, expenses ?? [])} />
     ),
   });
 
@@ -442,9 +489,7 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
   /* ── Voice recognition ── */
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const SR =
-      (window as any).webkitSpeechRecognition ||
-      (window as any).SpeechRecognition;
+    const SR = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     if (!SR) return;
     const rec = new SR();
     rec.continuous = false;
@@ -485,11 +530,11 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
           gap: 12px;
           padding: 10px 24px 10px 14px;
           background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255,255,255,0.1);
           border-right: none;
           border-radius: 20px 0 0 20px;
           cursor: pointer;
-          box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
+          box-shadow: -4px 0 24px rgba(0,0,0,0.25);
           transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
           font-family: 'Figtree', sans-serif;
         }
@@ -497,24 +542,17 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
           right: 0;
           padding-left: 18px;
           background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
-          box-shadow: -6px 0 32px rgba(124, 58, 237, 0.2);
+          box-shadow: -6px 0 32px rgba(124,58,237,0.2);
         }
         .ea-trigger-icon {
-          width: 38px; height: 38px; 
+          width: 38px; height: 38px;
           background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
           border-radius: 50%;
           display: flex; align-items: center; justify-content: center;
           flex-shrink: 0; transition: transform 0.3s ease;
-          box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+          box-shadow: 0 4px 12px rgba(124,58,237,0.3);
         }
-        .ea-trigger:hover .ea-trigger-icon { 
-          transform: scale(1.1) rotate(5deg);
-        }
-        .ea-trigger-label {
-          font-size: 14px; font-weight: 700; color: white;
-          letter-spacing: -0.01em; white-space: nowrap;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.2);
-        }
+        .ea-trigger:hover .ea-trigger-icon { transform: scale(1.1) rotate(5deg); }
         .ea-trigger-badge {
           position: absolute; top: -3px; right: -3px;
           width: 11px; height: 11px;
@@ -522,30 +560,19 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
           display: ${hasUnread ? "block" : "none"};
           animation: ea-badge-pulse 1.5s ease-in-out infinite;
         }
-        @keyframes ea-badge-pulse {
-          0%,100% { transform: scale(1); }
-          50%      { transform: scale(1.25); }
-        }
+        @keyframes ea-badge-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.25)} }
 
-        /* ── Window ── */
-        .ea-window {
-          position: fixed; bottom: 92px; right: 28px;
-          width: 750px; height: 580px;
-          background: #FFFFFF; border-radius: 20px;
-          box-shadow: 0 24px 64px rgba(15,23,42,.16), 0 4px 16px rgba(15,23,42,.08);
-          display: flex; flex-direction: column;
-          overflow: hidden; z-index: 10000;
-          border: 1px solid #E2E8F0;
-          transform-origin: bottom right;
-          transition: opacity .25s cubic-bezier(.4,0,.2,1), transform .25s cubic-bezier(.4,0,.2,1);
-          opacity: ${isOpen ? 1 : 0};
-          transform: ${isOpen ? "scale(1) translateY(0)" : "scale(0.92) translateY(16px)"};
-          pointer-events: ${isOpen ? "all" : "none"};
+        /* ── Drag handle ── */
+        .ea-drag-handle {
+          cursor: grab;
+          user-select: none;
+          -webkit-user-select: none;
         }
+        .ea-drag-handle:active { cursor: grabbing; }
 
         /* ── Header ── */
         .ea-header {
-          background: #FFFFFF; padding: 14px 20px;
+          background: #FFFFFF; padding: 10px 20px;
           display: flex; align-items: center; justify-content: space-between;
           flex-shrink: 0; border-bottom: 1px solid #F1F5F9;
         }
@@ -576,11 +603,14 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
           margin-right: 6px; animation: ea-pulse 2s ease-in-out infinite;
         }
         @keyframes ea-pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
-        .ea-online-text {
-          font-size: 11px; color: #94A3B8; font-weight: 500;
-          display: flex; align-items: center;
-        }
+        .ea-online-text { font-size: 11px; color: #94A3B8; font-weight: 500; display: flex; align-items: center; }
         .ea-date-text { font-size: 11px; color: #94A3B8; font-weight: 500; }
+
+        /* ── Size indicator ── */
+        .ea-size-indicator {
+          font-size: 10px; color: #CBD5E1; font-family: 'Figtree', monospace;
+          font-weight: 500; letter-spacing: 0.02em;
+        }
 
         /* ── Chat body ── */
         .ea-body {
@@ -647,179 +677,373 @@ useCopilotReadable({ description: "Currently selected expense record", value: st
         .ea-extra-icon:hover { color: #64748B; }
         .ea-extra-icon.recording { color: #EF4444; }
 
-        /* ── Inline chat option buttons (WhatsApp-style) ── */
-        .ea-chat-options {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          padding: 4px 0 2px;
-          width: 100%;
+        /* ── Resize handles ── */
+        .ea-resize-e {
+          position: absolute; top: 12px; right: -3px; bottom: 12px; width: 10px;
+          cursor: ew-resize; z-index: 200;
+          touch-action: none;
         }
-        .ea-chat-options-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-          margin-top: 4px;
+        .ea-resize-e:hover { background: rgba(37,99,235,0.15); border-radius: 0 4px 4px 0; }
+        .ea-resize-s {
+          position: absolute; left: 12px; right: 12px; bottom: -3px; height: 10px;
+          cursor: ns-resize; z-index: 200;
+          touch-action: none;
         }
-        /* If odd number of buttons, make the last one span full width */
-        .ea-chat-options-grid :last-child:nth-child(odd) {
-          grid-column: span 2;
+        .ea-resize-s:hover { background: rgba(37,99,235,0.15); border-radius: 0 0 4px 4px; }
+        .ea-resize-se {
+          position: absolute; right: -2px; bottom: -2px; width: 22px; height: 22px;
+          cursor: se-resize; z-index: 201;
+          touch-action: none;
+          display: flex; align-items: flex-end; justify-content: flex-end;
+          padding: 4px;
         }
-        .ea-chat-options-label {
-          font-size: 10px;
-          font-weight: 700;
-          color: #64748B;
-          letter-spacing: .05em;
-          margin-bottom: 4px;
-          font-family: 'DM Sans', sans-serif;
+        .ea-resize-se::after {
+          content: '';
           display: block;
+          width: 10px; height: 10px;
+          border-right: 2.5px solid #CBD5E1;
+          border-bottom: 2.5px solid #CBD5E1;
+          border-radius: 0 0 3px 0;
+          transition: border-color .15s;
+        }
+        .ea-resize-se:hover::after { border-color: #2563EB; }
+
+        /* ── Chat option buttons ── */
+        .ea-chat-options { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 2px; width: 100%; }
+        .ea-chat-options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+        .ea-chat-options-grid :last-child:nth-child(odd) { grid-column: span 2; }
+        .ea-chat-options-label {
+          font-size: 10px; font-weight: 700; color: #64748B; letter-spacing: .05em;
+          margin-bottom: 4px; font-family: 'DM Sans', sans-serif; display: block;
         }
         .ea-chat-option-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: #FFFFFF;
-          border: 1px solid #0F172A;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all .2s ease;
-          font-family: 'Figtree', sans-serif;
-          text-align: left;
+          display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+          background: #FFFFFF; border: 1px solid #0F172A; border-radius: 8px;
+          cursor: pointer; transition: all .2s ease;
+          font-family: 'Figtree', sans-serif; text-align: left;
         }
         .ea-chat-option-btn:hover {
-          background: #0F172A;
-          color: #FFFFFF;
-          transform: translateY(-1.5px);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+          background: #0F172A; color: #FFFFFF;
+          transform: translateY(-1.5px); box-shadow: 0 4px 12px rgba(0,0,0,0.12);
         }
         .ea-chat-option-btn:hover .ea-chat-option-icon,
-        .ea-chat-option-btn:hover .ea-chat-option-text {
-          color: #FFFFFF;
-        }
-        .ea-chat-option-icon {
-          color: #0F172A;
-          display: flex; align-items: center; flex-shrink: 0;
-          transition: color .2s;
-        }
-        .ea-chat-option-text {
-          font-size: 11px;
-          font-weight: 600;
-          color: #0F172A;
-          transition: color .2s;
-        }
+        .ea-chat-option-btn:hover .ea-chat-option-text { color: #FFFFFF; }
+        .ea-chat-option-icon { color: #0F172A; display: flex; align-items: center; flex-shrink: 0; transition: color .2s; }
+        .ea-chat-option-text { font-size: 11px; font-weight: 600; color: #0F172A; transition: color .2s; }
 
         /* ── Result cards ── */
-        .ea-card {
-          border-radius: 10px; border: 1px solid #E2E8F0;
-          overflow: hidden; margin: 2px 0;
-          font-family: 'Figtree', sans-serif; width: 100%;
-        }
-        .ea-card-header {
-          display: flex; align-items: center; gap: 6px;
-          padding: 8px 12px; border-bottom: 1px solid;
-        }
+        .ea-card { border-radius: 10px; border: 1px solid #E2E8F0; overflow: hidden; margin: 2px 0; font-family: 'Figtree', sans-serif; width: 100%; }
+        .ea-card-header { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid; }
         .ea-card-body { padding: 10px 12px; }
         .ea-card-text { font-size: 12px; color: #475569; line-height: 1.55; margin: 0; }
-        .ea-badge {
-          display: inline-block; font-size: 10px; font-weight: 600;
-          padding: 2px 7px; border-radius: 20px; margin: 4px 4px 0 0;
-        }
+        .ea-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; margin: 4px 4px 0 0; }
         .ea-badge-amber { background: #FEF3C7; color: #92400E; }
         .ea-badge-red   { background: #FEE2E2; color: #991B1B; }
         .ea-timeline-step { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
-        .ea-timeline-dot {
-          width: 18px; height: 18px; border-radius: 50%;
-          background: #EFF6FF; color: #2563EB;
-          font-size: 10px; font-weight: 700;
-          display: flex; align-items: center; justify-content: center;
-          flex-shrink: 0; margin-top: 1px;
-        }
+        .ea-timeline-dot { width: 18px; height: 18px; border-radius: 50%; background: #EFF6FF; color: #2563EB; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
         .ea-amount-row { display: flex; align-items: center; gap: 12px; }
         .ea-amount-item { display: flex; flex-direction: column; gap: 2px; }
         .ea-amount-label { font-size: 10px; color: #94A3B8; font-weight: 500; }
         .ea-amount-value { font-size: 16px; font-weight: 700; color: #0F172A; }
         .ea-amount-sep { font-size: 16px; color: #CBD5E1; }
         .ea-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .ea-summary-item {
-          background: #F8FAFC; border-radius: 8px; padding: 8px 10px;
-          display: flex; flex-direction: column; gap: 2px;
-        }
+        .ea-summary-item { background: #F8FAFC; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
         .ea-summary-label { font-size: 10px; color: #94A3B8; font-weight: 500; }
         .ea-summary-value { font-size: 15px; font-weight: 700; }
         .ea-download-btn {
-          display: flex; align-items: center; gap: 6px;
-          margin-top: 10px; padding: 8px 14px;
-          background: #0F172A; color: white;
-          border: none; border-radius: 8px;
-          font-size: 12px; font-weight: 600;
-          cursor: pointer; width: 100%; justify-content: center;
-          transition: background .15s; font-family: 'Figtree', sans-serif;
+          display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 14px;
+          background: #0F172A; color: white; border: none; border-radius: 8px;
+          font-size: 12px; font-weight: 600; cursor: pointer; width: 100%;
+          justify-content: center; transition: background .15s; font-family: 'Figtree', sans-serif;
         }
         .ea-download-btn:hover { background: #1E293B; }
+
+        /* ── Terminal mode ── */
+        .ea-terminal-resize-handle {
+          position: absolute;
+          top: -4px; left: 0; right: 0; height: 8px;
+          cursor: ns-resize;
+          z-index: 10;
+          display: flex; align-items: center; justify-content: center;
+          touch-action: none;
+        }
+        .ea-terminal-resize-handle::before {
+          content: '';
+          display: block;
+          width: 40px; height: 3px;
+          border-radius: 2px;
+          background: rgba(255,255,255,0.15);
+          transition: background 0.15s;
+        }
+        .ea-terminal-resize-handle:hover::before { background: rgba(0,122,204,0.7); }
+
+        .ea-terminal-tab-bar {
+          display: flex;
+          align-items: center;
+          padding: 0 8px;
+          height: 36px;
+          background: #252526;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          flex-shrink: 0;
+          gap: 0;
+          user-select: none;
+        }
+        .ea-terminal-tab {
+          display: flex; align-items: center; gap: 7px;
+          padding: 0 14px;
+          height: 100%;
+          border-top: 2px solid #007ACC;
+          background: #1E1E1E;
+          color: rgba(255,255,255,0.85);
+          font-size: 12px; font-weight: 600;
+          letter-spacing: 0.01em;
+          font-family: 'Figtree', sans-serif;
+        }
+        .ea-terminal-spacer { flex: 1; }
+        .ea-terminal-action-btn {
+          background: none; border: none; cursor: pointer;
+          color: rgba(255,255,255,0.45);
+          display: flex; align-items: center; justify-content: center;
+          width: 28px; height: 28px; border-radius: 4px;
+          transition: background 0.15s, color 0.15s;
+        }
+        .ea-terminal-action-btn:hover {
+          background: rgba(255,255,255,0.08);
+          color: rgba(255,255,255,0.85);
+        }
+        .ea-terminal-action-btn.close:hover { background: rgba(232,17,35,0.6); color: #fff; }
+
+        /* Snap preview overlay */
+        .ea-snap-preview {
+          position: fixed; bottom: 0; right: 0;
+          height: ${TERMINAL_DEFAULT_H}px;
+          background: rgba(0,122,204,0.06);
+          border-top: 2px dashed rgba(0,122,204,0.35);
+          z-index: 9998;
+          display: flex; align-items: center; justify-content: center;
+          pointer-events: none;
+          font-family: 'Figtree', sans-serif;
+        }
+        .ea-snap-label {
+          display: flex; align-items: center; gap: 8px;
+          padding: 7px 16px;
+          background: rgba(0,122,204,0.15);
+          border: 1px solid rgba(0,122,204,0.3);
+          border-radius: 20px;
+          color: #4DA6FF;
+          font-size: 12px; font-weight: 700;
+          letter-spacing: 0.02em;
+        }
       `}</style>
 
-      {/* ── Trigger ── */}
-      <button
-        className="ea-trigger"
-        onClick={() => setIsOpen((o) => !o)}
-        aria-label="Toggle AI Audit Agent"
-      >
-        <div className="ea-trigger-icon">
-          {isOpen
-            ? <ChevronDown size={18} color="white" />
-            : <Sparkles size={18} color="white" />}
-        </div>
-        <div className="ea-trigger-badge" />
-      </button>
-
-      {/* ── Chat window ── */}
-      <div className="ea-window">
-
-        {/* Header */}
-        <div className="ea-header">
-          <div className="ea-header-left">
-            <div className="ea-avatar">
-              <ShieldCheck size={16} color="white" strokeWidth={2.5} />
+      {/* ── Trigger — hidden while panel is open ── */}
+      <AnimatePresence>
+        {!isOpen && (
+          <motion.button
+            key="ea-trigger"
+            className="ea-trigger"
+            onClick={() => setIsOpen(true)}
+            aria-label="Open AI Audit Agent"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 24 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="ea-trigger-icon">
+              <Sparkles size={18} color="white" />
             </div>
-            <div className="ea-header-name">Expify Audit AI</div>
-          </div>
-          <div className="ea-header-actions">
-            <button className="ea-header-btn" title="Refresh"><RotateCcw size={16} /></button>
-            <button className="ea-header-btn" onClick={() => setIsOpen(false)} title="Close">
-              <X size={18} />
-            </button>
-          </div>
-        </div>
+            <div className="ea-trigger-badge" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
-        {/* Status */}
-        <div className="ea-status-bar">
-          <span className="ea-online-text">
-            <span className="ea-online-dot" />
-            We're online
-          </span>
-          <span className="ea-date-text">Oct 15, 2024</span>
-        </div>
+      {/* ── Snap-to-terminal preview overlay ── */}
+      <AnimatePresence>
+        {snapPreview && (
+          <motion.div
+            key="snap-preview"
+            className="ea-snap-preview"
+            style={{ left: sidebarLeft }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div className="ea-snap-label">
+              <Terminal size={13} />
+              Drop to dock as terminal
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        {/* Chat body — no fixed strip, buttons live inside the chat */}
-        <div className="ea-body">
-          <CopilotChat
-            labels={{
-              initial: "",
-              placeholder: "Type a message...",
+      <AnimatePresence mode="wait">
+
+        {/* ── Floating mode ── */}
+        {isOpen && !terminalMode && (
+          <motion.div
+            key="floating"
+            drag
+            dragControls={dragControls}
+            dragListener={false}
+            dragMomentum={false}
+            dragElastic={0}
+            onDrag={onDragUpdate}
+            onDragEnd={onDragEnd}
+            style={{
+              x: motionX,
+              y: motionY,
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: size.w,
+              height: size.h,
+              zIndex: 10000,
             }}
-          />
-          <div className="ea-input-extras">
-            <button
-              className={`ea-extra-icon ${isRecording ? "recording" : ""}`}
-              onClick={toggleRecording}
-              title="Voice Input"
-            >
-              {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
-          </div>
-        </div>
-      </div>
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.88, y: 40 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+          >
+            {/* Inner visual container */}
+            <div style={{
+              position: "absolute",
+              inset: 0,
+              background: "#FFFFFF",
+              borderRadius: 20,
+              boxShadow: "0 24px 64px rgba(15,23,42,.18), 0 4px 16px rgba(15,23,42,.10)",
+              border: "1px solid #E2E8F0",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}>
+              {/* Header — drag handle */}
+              <div
+                className="ea-header ea-drag-handle"
+                onPointerDown={(e) => dragControls.start(e)}
+              >
+                <div className="ea-header-left">
+                  <div className="ea-avatar">
+                    <ShieldCheck size={16} color="white" strokeWidth={2.5} />
+                  </div>
+                  <div className="ea-header-name">Expify Audit AI</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <GripHorizontal size={14} color="#CBD5E1" />
+                  <span className="ea-size-indicator">{Math.round(size.w)}×{Math.round(size.h)}</span>
+                </div>
+                <div className="ea-header-actions">
+                  <button className="ea-header-btn" title="Refresh"><RotateCcw size={16} /></button>
+                  <button className="ea-header-btn" onClick={() => setIsOpen(false)} title="Close">
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Status bar */}
+              <div className="ea-status-bar">
+                <span className="ea-online-text">
+                  <span className="ea-online-dot" />
+                  We're online
+                </span>
+                <span className="ea-date-text">Oct 15, 2024</span>
+              </div>
+
+              {/* Chat body */}
+              <div className="ea-body">
+                <CopilotChat labels={{ initial: "", placeholder: "Type a message..." }} />
+                <div className="ea-input-extras">
+                  <button
+                    className={`ea-extra-icon ${isRecording ? "recording" : ""}`}
+                    onClick={toggleRecording}
+                    title="Voice Input"
+                  >
+                    {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Resize handles */}
+            <div className="ea-resize-e" onPointerDown={(e) => handleResize(e, "e")} />
+            <div className="ea-resize-s" onPointerDown={(e) => handleResize(e, "s")} />
+            <div className="ea-resize-se" onPointerDown={(e) => handleResize(e, "se")} />
+          </motion.div>
+        )}
+
+        {/* ── Terminal mode ── */}
+        {isOpen && terminalMode && (
+          <motion.div
+            key="terminal"
+            style={{
+              position: "fixed",
+              bottom: 0,
+              left: sidebarLeft,
+              right: 0,
+              height: terminalHeight,
+              zIndex: 10000,
+              background: "#1E1E1E",
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            initial={{ y: terminalHeight, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: terminalHeight, opacity: 0 }}
+            transition={{ type: "spring", damping: 32, stiffness: 320, mass: 0.8 }}
+          >
+            {/* Top resize handle */}
+            <div
+              className="ea-terminal-resize-handle"
+              onPointerDown={handleTerminalResize}
+            />
+
+            {/* VS Code-style tab bar */}
+            <div className="ea-terminal-tab-bar">
+              <div className="ea-terminal-tab">
+                <ShieldCheck size={13} color="#007ACC" strokeWidth={2.5} />
+                EXPIFY AUDIT AI
+              </div>
+              <div className="ea-terminal-spacer" />
+              <button
+                className="ea-terminal-action-btn"
+                title="Pop out to window"
+                onClick={popOutFromTerminal}
+              >
+                <Maximize2 size={13} />
+              </button>
+              <button
+                className="ea-terminal-action-btn"
+                title="Refresh"
+              >
+                <RotateCcw size={13} />
+              </button>
+              <button
+                className="ea-terminal-action-btn close"
+                title="Close"
+                onClick={() => setIsOpen(false)}
+              >
+                <X size={13} />
+              </button>
+            </div>
+
+            {/* Chat content — same component, terminal container */}
+            <div className="ea-body" style={{ background: "#FFFFFF" }}>
+              <CopilotChat labels={{ initial: "", placeholder: "Type a message..." }} />
+              <div className="ea-input-extras">
+                <button
+                  className={`ea-extra-icon ${isRecording ? "recording" : ""}`}
+                  onClick={toggleRecording}
+                  title="Voice Input"
+                >
+                  {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+      </AnimatePresence>
     </>
   );
 }

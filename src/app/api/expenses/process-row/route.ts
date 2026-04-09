@@ -4,7 +4,7 @@ import { analyseReceipt } from "@/app/api/whatsapp/vision";
 import { uploadReceiptImage } from "@/app/api/whatsapp/db";
 import type { ParsedExcelRow } from "../parse-excel/route";
 
-const AGENT_URL = process.env.AGENT_URL || "http://localhost:8000";
+const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8000";
 
 function buildAuditPrompt(params: {
   expenseId: string;

@@ -137,6 +137,8 @@ def _load_composio_tools(admin_user_id: str) -> List[SanitizedTool]:
             "SLACK_SEND_MESSAGE", "SLACK_LIST_CHANNELS", "SLACK_GET_CHANNEL_MESSAGES",
             "GOOGLESHEETS_CREATE_GOOGLE_SHEET", "GOOGLESHEETS_SHEET_FROM_JSON",
             "GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_LIST_EVENTS",
+            "ZOHO_INVOICE_CREATE_INVOICE", "ZOHO_INVOICE_GET_INVOICE", "ZOHO_INVOICE_UPDATE_INVOICE",
+            "ZOHO_INVOICE_LIST_INVOICES", "ZOHO_INVOICE_CREATE_CONTACT", "ZOHO_INVOICE_CREATE_ITEM"
         ]
 
         active_prefixes = tuple(tk.upper() + "_" for tk in active_toolkits)

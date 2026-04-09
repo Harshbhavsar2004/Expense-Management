@@ -1,13 +1,23 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { ExpenseRow } from "@/components/ExpensesTable";
-import {
-  ArrowUpRight, Users, CheckCircle, Clock, AlertTriangle,
-  CircleDollarSign, ReceiptText, TrendingUp, ArrowRight,
-  ChevronRight, ShieldCheck, Hourglass, Ban,
+import { 
+  Users, 
+  CheckCircle, 
+  AlertTriangle,
+  CircleDollarSign, 
+  ReceiptText, 
+  ArrowRight,
+  ShieldCheck, 
+  Hourglass,
+  Calendar as IconCalendar,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 export default function AdminDashboard() {
   const [data, setData] = useState<{ applications: any[]; expenses: any[] }>({ applications: [], expenses: [] });
@@ -42,191 +52,209 @@ export default function AdminDashboard() {
     return { total, count: expenses.length, verified, pending: applications.length, mismatches, employees };
   }, [data]);
 
-  const byCategory = useMemo(() => {
-    const map: Record<string, number> = {};
-    data.expenses.forEach(e => { const k = e.expense_type || "Other"; map[k] = (map[k] || 0) + (e.claimed_amount_numeric || 0); });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [data.expenses]);
-
   const pendingApps = data.applications.filter(a => a.status === "submitted").slice(0, 8);
 
   return (
-    <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: "28px", maxWidth: "1400px" }}>
-
-      {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "16px" }} className="stagger-children">
-        <StatCard label="Total Volume"      value={`₹${(stats.total / 100000).toFixed(1)}L`} icon={<CircleDollarSign size={19} />} color="var(--accent)"   bg="var(--accent-light)"  trend="+12.3%" loading={loading} />
-        <StatCard label="Total Claims"      value={stats.count.toString()}                    icon={<ReceiptText size={19} />}      color="#6366F1"          bg="rgba(99,102,241,0.09)" loading={loading} />
-        <StatCard label="Verified"          value={stats.verified.toString()}                 icon={<ShieldCheck size={19} />}     color="var(--success)"   bg="var(--success-bg)"    loading={loading} />
-        <StatCard label="Pending Review"    value={stats.pending.toString()}                  icon={<Hourglass size={19} />}       color="var(--warning)"   bg="var(--warning-bg)"    loading={loading} />
-        <StatCard label="Mismatches"        value={stats.mismatches.toString()}               icon={<AlertTriangle size={19} />}   color="var(--danger)"    bg="var(--danger-bg)"     loading={loading} />
-        <StatCard label="Active Employees"  value={stats.employees.toString()}                icon={<Users size={19} />}           color="var(--teal)"      bg="var(--teal-light)"    loading={loading} />
+    <div className="flex flex-col gap-8 p-8 w-full animate-in fade-in duration-700">
+      
+      {/* ── Page Header ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-zinc-900 font-extrabold tracking-tight">
+            Admin <span className="text-blue-900">Overview</span>
+          </h1>
+          <p className="text-zinc-500 font-medium">Global expense monitoring and application management</p>
+        </div>
       </div>
 
-      {/* Main grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "20px" }}>
+      {/* ── Stats grid ── */}
+      <motion.div 
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4"
+        initial="hidden"
+        animate="show"
+        variants={{
+          hidden: { opacity: 0 },
+          show: {
+            opacity: 1,
+            transition: {
+              staggerChildren: 0.1
+            }
+          }
+        }}
+      >
+        <StatCard label="Total Volume"      value={`₹${(stats.total / 100000).toFixed(1)}L`} icon={<CircleDollarSign size={22} />} variant="primary" loading={loading} />
+        <StatCard label="Total Claims"      value={stats.count.toString()}                    icon={<ReceiptText size={22} />}      variant="zinc"    loading={loading} />
+        <StatCard label="Verified"          value={stats.verified.toString()}                 icon={<ShieldCheck size={22} />}     variant="success" loading={loading} />
+        <StatCard label="Pending"           value={stats.pending.toString()}                  icon={<Hourglass size={22} />}       variant="warning" loading={loading} />
+        <StatCard label="Mismatches"        value={stats.mismatches.toString()}               icon={<AlertTriangle size={22} />}   variant="rose"    loading={loading} />
+        <StatCard label="Employees"         value={stats.employees.toString()}                icon={<Users size={22} />}           variant="zinc"    loading={loading} />
+      </motion.div>
 
-        {/* Pending approvals table */}
-        <div className="premium-card animate-fade-in" style={{ padding: "22px 24px" }}>
-          <div className="section-header">
-            <div>
-              <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'DM Sans', sans-serif" }}>
-                Pending Application Approvals
-              </h3>
-              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>
-                Submitted reports awaiting your review
-              </p>
-            </div>
-            <Link href="/admin/approvals" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", fontWeight: 500, color: "var(--accent)", textDecoration: "none", fontFamily: "'Inter', sans-serif" }}>
-              View all <ArrowRight size={14} />
-            </Link>
+      {/* ── Main Content Area ── */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-zinc-900 font-bold tracking-tight">Pending Applications</h3>
           </div>
-
-          {loading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {[1,2,3,4].map(i => <div key={i} className="shimmer" style={{ height: "58px", borderRadius: "10px" }} />)}
-            </div>
-          ) : pendingApps.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
-              <CheckCircle size={32} style={{ opacity: 0.3, marginBottom: "10px" }} />
-              <p style={{ margin: 0, fontSize: "14px" }}>All caught up! No pending applications.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 140px 100px 80px", gap: "12px", padding: "8px 12px", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Inter', sans-serif", borderBottom: "1px solid var(--border)" }}>
-                <span>Application / Employee</span><span>Location</span><span>Reimbursable</span><span>Submitted</span><span>Action</span>
-              </div>
-              {pendingApps.map(app => {
-                const reimbursable = app.reimbursable_amount ?? 0;
-                const total        = app.total_claimed ?? 0;
-                const flagged      = app.flagged_count ?? 0;
-                return (
-                <div
-                  key={app.id}
-                  onClick={() => window.location.href = `/applications/${app.application_id}`}
-                  style={{ display: "grid", gridTemplateColumns: "1fr 130px 140px 100px 80px", gap: "12px", padding: "10px 12px", borderRadius: "8px", alignItems: "center", transition: "background 0.15s", cursor: "pointer" }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-tertiary)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
-                    <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 700, color: "white", flexShrink: 0 }}>
-                      {app.application_id.slice(-2)}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-primary)", fontFamily: "'Inter', sans-serif" }}>{app.application_id}</div>
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>{app.users?.full_name || "Employee"}</div>
-                      <PayoutBadge status={app.payout_status} />
-                    </div>
-                  </div>
-                  <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontFamily: "'Inter', sans-serif" }}>{app.city || "—"}</span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#059669", fontFamily: "'Inter', sans-serif" }}>
-                      ₹{reimbursable.toLocaleString("en-IN")}
-                    </span>
-                    {flagged > 0 ? (
-                      <span style={{ fontSize: "10px", color: "#DC2626", fontFamily: "'Inter', sans-serif" }}>
-                        {flagged} flagged · ₹{total.toLocaleString("en-IN")} claimed
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: "10px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>
-                        All clean · ₹{total.toLocaleString("en-IN")} claimed
-                      </span>
-                    )}
-                  </div>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "'Inter', sans-serif" }}>
-                    {app.submitted_at ? new Date(app.submitted_at).toLocaleDateString("en-IN") : "—"}
-                  </span>
-                  <button style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--accent)", background: "var(--accent-light)", color: "var(--accent)", fontSize: "11px", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
-                    Review
-                  </button>
-                </div>
-                );
-              })}
-            </div>
-          )}
+          <Link href="/admin/approvals" className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 group transition-colors">
+            View all Applications 
+            <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+          </Link>
         </div>
 
-        {/* Right panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-
-          {/* Spend by category */}
-          <div className="premium-card animate-fade-in" style={{ padding: "20px" }}>
-            <h4 style={{ margin: "0 0 16px", fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'DM Sans', sans-serif" }}>
-              Spend by Category
-            </h4>
-            {loading ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {[1,2,3].map(i => <div key={i} className="shimmer" style={{ height: "36px" }} />)}
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {byCategory.map(([cat, amt]) => {
-                  const max = byCategory[0]?.[1] || 1;
-                  const pct = Math.round((amt / max) * 100);
-                  return (
-                    <div key={cat}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
-                        <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontFamily: "'Inter', sans-serif", textTransform: "capitalize" }}>{cat}</span>
-                        <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>₹{amt.toLocaleString("en-IN")}</span>
-                      </div>
-                      <div style={{ height: "5px", background: "var(--bg-tertiary)", borderRadius: "9999px" }}>
-                        <div style={{ height: "100%", width: `${pct}%`, background: CATEGORY_COLORS[cat.toLowerCase()] || "var(--accent)", borderRadius: "9999px", transition: "width 0.7s cubic-bezier(0.4,0,0.2,1)" }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+        {loading ? (
+          <div className="flex flex-col gap-3">
+             {[1,2,3,4].map(i => <div key={i} className="h-[72px] bg-zinc-100 animate-pulse rounded-2xl" />)}
           </div>
-        </div>
+        ) : pendingApps.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-zinc-50/50 rounded-2xl border-2 border-dashed border-zinc-200">
+            <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mb-4 text-zinc-400">
+              <CheckCircle size={32} strokeWidth={1.5} />
+            </div>
+            <h4 className="text-lg font-bold text-zinc-900">All cleared</h4>
+            <p className="text-zinc-500 text-sm">No pending applications requiring review.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-zinc-400">Application / Employee</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-zinc-400">Location</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-zinc-400 text-right">Reimbursable</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-zinc-400 text-center">Submitted At</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-zinc-400 text-center">Status</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-zinc-400"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {pendingApps.map((app, index) => (
+                    <motion.tr 
+                      key={app.id} 
+                      className="hover:bg-zinc-50/50 transition-colors group cursor-pointer"
+                      onClick={() => window.location.href = `/applications/${app.application_id}`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold shadow-sm transition-all group-hover:scale-110",
+                            "bg-blue-600 text-white"
+                          )}>
+                            {app.application_id.slice(-2)}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-zinc-900">{app.application_id}</div>
+                            <div className="text-[11px] text-zinc-500 font-medium">{app.users?.full_name || "Employee"}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                           <div className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
+                           <span className="text-sm font-semibold text-zinc-700">{app.city || "—"}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-emerald-600">₹{(app.reimbursable_amount ?? 0).toLocaleString("en-IN")}</span>
+                          {app.flagged_count > 0 && (
+                            <span className="text-[10px] text-rose-500 font-bold">{app.flagged_count} flagged items</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                         <div className="flex items-center justify-center gap-2">
+                            <IconCalendar size={14} className="text-zinc-400" />
+                            <span className="text-[12px] font-medium text-zinc-600">
+                              {app.submitted_at ? new Date(app.submitted_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}
+                            </span>
+                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-center">
+                          <PayoutBadge status={app.payout_status} />
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                         <div className="p-2 text-zinc-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
+                            <ArrowRight size={16} />
+                         </div>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/* ── Sub-components ── */
-
-function PayoutBadge({ status }: { status: string | null }) {
-  if (!status) return null;
-  const map: Record<string, { bg: string; color: string }> = {
-    PENDING:  { bg: "#fef9c3", color: "#a16207" },
-    SUCCESS:  { bg: "#dcfce7", color: "#15803d" },
-    FAILURE:  { bg: "#fee2e2", color: "#b91c1c" },
-    REVERSED: { bg: "#f3e8ff", color: "#7e22ce" },
+function StatCard({ label, value, icon, variant, loading }: any) {
+  const variants = {
+    primary: "bg-blue-50 text-blue-600",
+    success: "bg-emerald-50 text-emerald-600",
+    warning: "bg-amber-50 text-amber-600",
+    rose:    "bg-rose-50 text-rose-600",
+    zinc:    "bg-zinc-100 text-zinc-600",
   };
-  const s = map[status] ?? { bg: "var(--bg-tertiary)", color: "var(--text-muted)" };
+
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "1px 6px", borderRadius: "999px", fontSize: "9px", fontWeight: 700, background: s.bg, color: s.color, marginTop: "2px" }}>
-      {status}
-    </span>
+    <motion.div 
+      variants={{
+        hidden: { opacity: 0, y: 20 },
+        show: { opacity: 1, y: 0 }
+      }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      className="p-6 rounded-2xl border border-zinc-200 bg-white text-zinc-900 hover:border-zinc-300 hover:shadow-lg transition-all duration-300"
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div className={cn("p-2.5 rounded-xl", variants[variant as keyof typeof variants])}>
+          {icon}
+        </div>
+      </div>
+      <div>
+        <p className="text-[12px] font-bold uppercase tracking-widest mb-1 opacity-60 text-zinc-500">
+          {label}
+        </p>
+        {loading ? (
+          <div className="h-8 w-24 bg-zinc-200/50 animate-pulse rounded-lg mt-2" />
+        ) : (
+          <h2 className="text-2xl font-extrabold tracking-tight text-zinc-900">{value}</h2>
+        )}
+      </div>
+    </motion.div>
   );
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  food: "#10B981", travel: "#3B82F6", hotel: "#6366F1",
-  accommodation: "#8B5CF6", entertainment: "#F59E0B",
-  medical: "#EF4444", other: "#94A3B8",
-};
+function PayoutBadge({ status }: { status: string | null }) {
+  if (!status) return (
+    <div className="px-2.5 py-1 bg-zinc-50 text-zinc-600 rounded-full text-[10px] font-bold flex items-center gap-1 border border-zinc-100 shadow-sm">
+      <AlertCircle size={12} />
+      Review Needed
+    </div>
+  );
 
-function StatCard({ label, value, icon, color, bg, trend, loading }: {
-  label: string; value: string; icon: React.ReactNode;
-  color: string; bg: string; trend?: string; loading?: boolean;
-}) {
+  const map: Record<string, { bg: string; color: string; border: string; icon: any }> = {
+    PENDING:  { bg: "bg-amber-50", color: "text-amber-600", border: "border-amber-100", icon: Hourglass },
+    SUCCESS:  { bg: "bg-emerald-50", color: "text-emerald-600", border: "border-emerald-100", icon: CheckCircle2 },
+    FAILURE:  { bg: "bg-rose-50", color: "text-rose-600", border: "border-rose-100", icon: XCircle },
+    REVERSED: { bg: "bg-purple-50", color: "text-purple-600", border: "border-purple-100", icon: AlertTriangle },
+  };
+
+  const s = map[status] ?? { bg: "bg-zinc-50", color: "text-zinc-600", border: "border-zinc-100", icon: AlertCircle };
+  const Icon = s.icon;
+
   return (
-    <div className="stat-card animate-fade-in">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
-        <div style={{ padding: "8px", background: bg, color, borderRadius: "9px" }}>{icon}</div>
-        {trend && (
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--success)", display: "flex", alignItems: "center", gap: "2px", background: "var(--success-bg)", padding: "2px 7px", borderRadius: "9999px" }}>
-            <ArrowUpRight size={11} /> {trend}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", fontFamily: "'Inter', sans-serif" }}>{label}</div>
-      {loading
-        ? <div className="shimmer" style={{ height: "26px", width: "70px", marginTop: "5px" }} />
-        : <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", marginTop: "3px", fontFamily: "'DM Sans', sans-serif", letterSpacing: "-0.02em" }}>{value}</div>
-      }
+    <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border shadow-sm", s.bg, s.color, s.border)}>
+       <Icon size={12} />
+       {status}
     </div>
   );
 }
