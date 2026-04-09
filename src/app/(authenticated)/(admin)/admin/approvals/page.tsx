@@ -319,7 +319,7 @@ export default function ApprovalsPage() {
                         <td className="px-6 py-4 text-right">
                           <div className="flex flex-col">
                             <span className="text-sm font-bold text-emerald-600">₹{(app.reimbursable_amount ?? 0).toLocaleString("en-IN")}</span>
-                            {app.flagged_count > 0 && (
+                            {(app.flagged_count ?? 0) > 0 && (
                               <div className="flex items-center justify-end gap-1 text-[10px] text-rose-500 font-bold uppercase tracking-tight">
                                 <AlertCircle size={10} />
                                 {app.flagged_count} Flagged

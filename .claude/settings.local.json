@@ -11,7 +11,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.copilotkit.ai)",
       "WebFetch(domain:ai.pydantic.dev)",
-      "WebFetch(domain:pydantic.dev)"
+      "WebFetch(domain:pydantic.dev)",
+      "Bash(find . -maxdepth 2 -type d ! -path './.git/*' ! -path './.next/*' ! -path './node_modules' -exec sh -c 'du -sh \"$1\" 2>/dev/null | grep -v \"^0\"' _ {} \\\\;)"
     ]
   }
 }
