@@ -384,29 +384,29 @@ export function AuditAgent({
   useCopilotReadable({ description: "All expenses in this application", value: stripEmbeddings(expenses) });
   useCopilotReadable({ description: "Currently selected expense record", value: stripEmbeddings(selectedRecord) });
 
+  /* ── appendMessage must be declared BEFORE actions so render closures can use it ── */
+  const { appendMessage } = useCopilotChat();
+
   /* ── Actions ── */
   useCopilotAction({
     name: "show_quick_options_tool",
     description: "Always call this tool immediately after your first greeting message to show the user their available quick options as interactive buttons inside the chat.",
     parameters: [],
     handler: async () => "Options displayed.",
-    render: () => {
-      const { appendMessage } = useCopilotChat();
-      return (
-        <ChatOptions
-          onSelect={(msg) => {
-            (appendMessage as any)({
-              id: Math.random().toString(36).substring(7),
-              role: "user",
-              content: msg,
-              isResultMessage: () => false,
-              isExecutionMessage: () => false,
-              isTextMessage: () => true,
-            });
-          }}
-        />
-      );
-    },
+    render: () => (
+      <ChatOptions
+        onSelect={(msg) => {
+          (appendMessage as any)({
+            id: Math.random().toString(36).substring(7),
+            role: "user",
+            content: msg,
+            isResultMessage: () => false,
+            isExecutionMessage: () => false,
+            isTextMessage: () => true,
+          });
+        }}
+      />
+    ),
   });
 
   useCopilotAction({
@@ -483,8 +483,6 @@ export function AuditAgent({
       <SummaryCard data={args} onDownload={() => downloadExcel(application, expenses ?? [])} />
     ),
   });
-
-  const { appendMessage } = useCopilotChat();
 
   /* ── Voice recognition ── */
   useEffect(() => {
@@ -616,46 +614,72 @@ export function AuditAgent({
         .ea-body {
           flex: 1; min-height: 0;
           display: flex; flex-direction: column;
-          background: #FFFFFF; position: relative; overflow: hidden;
+          background: #FFFFFF; overflow: hidden;
         }
-        .ea-body > div,
-        .ea-body .copilotkit-chat,
-        .ea-body [class*="copilot-kit-chat"] {
-          height: 100% !important;
+        /* Force CopilotKit root to fill and flex-column */
+        .ea-body > div {
+          flex: 1 !important;
+          min-height: 0 !important;
           display: flex !important;
           flex-direction: column !important;
+          overflow: hidden !important;
+        }
+
+        /* ── Messages area scrolls ── */
+        .ea-body [class*="Messages"],
+        .ea-body [class*="messages"] {
+          flex: 1 1 auto !important;
+          overflow-y: auto !important;
           min-height: 0 !important;
         }
 
+        /* ── Input pinned to bottom (works for all CopilotKit class name styles) ── */
+        .ea-body [class*="InputContainer"],
+        .ea-body [class*="input-container"],
+        .ea-body [class*="inputContainer"],
+        .ea-body .copilot-kit-input-container {
+          flex-shrink: 0 !important;
+          order: 999 !important;
+          background: #FFFFFF !important;
+          border-top: 1px solid #F1F5F9 !important;
+          padding: 10px 20px 38px !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 12px !important;
+        }
+
         /* ── Bubbles ── */
-        .ea-body .copilot-kit-message-row--assistant .copilot-kit-assistant-message {
+        .ea-body [class*="AssistantMessage"],
+        .ea-body [class*="assistant-message"],
+        .ea-body .copilot-kit-assistant-message {
           background: #F8FAFC !important; color: #1E293B !important;
           border-radius: 12px 12px 12px 0 !important;
           border: none !important; box-shadow: none !important;
           font-size: 13.5px !important; line-height: 1.6 !important;
         }
-        .ea-body .copilot-kit-message-row--user .copilot-kit-user-message {
+        .ea-body [class*="UserMessage"],
+        .ea-body [class*="user-message"],
+        .ea-body .copilot-kit-user-message {
           background: #2563EB !important; color: #FFFFFF !important;
           border-radius: 12px 12px 0 12px !important;
           font-size: 13.5px !important; line-height: 1.6 !important;
         }
 
-        /* ── Input ── */
-        .ea-body .copilot-kit-input-container {
-          background: #FFFFFF !important;
-          border-top: 1px solid #F1F5F9 !important;
-          padding: 10px 20px 38px !important;
-          display: flex !important; align-items: center !important; gap: 12px !important;
-          position: absolute !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
-          z-index: 20 !important;
-        }
+        /* ── Input field ── */
+        .ea-body [class*="InputContainer"] input,
+        .ea-body [class*="input-container"] input,
         .ea-body .copilot-kit-input {
           flex: 1 !important; background: #F1F5F9 !important;
           border: none !important; border-radius: 24px !important;
           padding: 10px 18px !important; font-size: 13.5px !important;
           box-shadow: none !important; transition: background .2s !important;
         }
+        .ea-body [class*="InputContainer"] input:focus,
         .ea-body .copilot-kit-input:focus { background: #ECEFF1 !important; outline: none !important; }
+
+        /* ── Send button ── */
+        .ea-body [class*="SendButton"],
+        .ea-body [class*="send-button"],
         .ea-body .copilot-kit-send-button {
           background: #2563EB !important; border-radius: 50% !important;
           width: 32px !important; height: 32px !important; min-width: 32px !important;
@@ -663,12 +687,12 @@ export function AuditAgent({
           align-items: center !important; justify-content: center !important;
           transition: transform .2s !important;
         }
+        .ea-body [class*="SendButton"]:hover,
         .ea-body .copilot-kit-send-button:hover { transform: scale(1.05); background: #1D4ED8 !important; }
 
         /* ── Mic ── */
         .ea-input-extras {
-          position: absolute; bottom: 13px; left: 24px;
-          display: flex; align-items: center; z-index: 30;
+          display: flex; align-items: center; flex-shrink: 0;
         }
         .ea-extra-icon {
           color: #94A3B8; cursor: pointer; transition: color .15s;
@@ -951,16 +975,10 @@ export function AuditAgent({
 
               {/* Chat body */}
               <div className="ea-body">
-                <CopilotChat labels={{ initial: "", placeholder: "Type a message..." }} />
-                <div className="ea-input-extras">
-                  <button
-                    className={`ea-extra-icon ${isRecording ? "recording" : ""}`}
-                    onClick={toggleRecording}
-                    title="Voice Input"
-                  >
-                    {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
-                  </button>
-                </div>
+                <CopilotChat
+                  labels={{ initial: "", placeholder: "Type a message..." }}
+                  className="ea-copilot-chat"
+                />
               </div>
             </div>
 
@@ -1029,16 +1047,10 @@ export function AuditAgent({
 
             {/* Chat content — same component, terminal container */}
             <div className="ea-body" style={{ background: "#FFFFFF" }}>
-              <CopilotChat labels={{ initial: "", placeholder: "Type a message..." }} />
-              <div className="ea-input-extras">
-                <button
-                  className={`ea-extra-icon ${isRecording ? "recording" : ""}`}
-                  onClick={toggleRecording}
-                  title="Voice Input"
-                >
-                  {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
-                </button>
-              </div>
+              <CopilotChat
+                labels={{ initial: "", placeholder: "Type a message..." }}
+                className="ea-copilot-chat"
+              />
             </div>
           </motion.div>
         )}
