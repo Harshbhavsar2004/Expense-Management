@@ -67,6 +67,73 @@ def fetch_user_id_by_phone(phone: str) -> Optional[str]:
     return None
 
 
+def fetch_all_policies_summary() -> str:
+    """
+    Fetch all rows from public.policies (with overrides) and return a
+    formatted summary for the audit system prompt.
+    Falls back to hardcoded company defaults if Supabase is unavailable.
+    """
+    defaults_text = (
+        "Company defaults (Supabase unavailable):\n"
+        "  Meal Tier I: ₹900/day | Tier II: ₹700/day | Tier III: ₹450/day\n"
+        "  Travel: allowed (no cap) | Hotel: allowed (no cap)\n"
+        "  Receipt required: Yes | Reimbursement cycle: 15–25 of month"
+    )
+
+    if not _supabase_url():
+        return defaults_text
+
+    try:
+        r = requests.get(
+            f"{_supabase_url()}/rest/v1/policies"
+            "?select=user_name,meal_tier1_limit,meal_tier2_limit,meal_tier3_limit,"
+            "travel_allowed,travel_daily_limit,hotel_allowed,hotel_daily_limit,"
+            "requires_receipt,reimbursement_cycle,is_active,"
+            "override_meal_tier1_limit,override_meal_tier2_limit,override_meal_tier3_limit,"
+            "override_travel_daily_limit,override_hotel_daily_limit,"
+            "override_valid_from,override_valid_until,override_reason"
+            "&is_active=eq.true&order=user_name.asc",
+            headers=_headers(),
+            timeout=5,
+        )
+        rows = r.json()
+        if not isinstance(rows, list) or not rows:
+            return defaults_text
+
+        lines = ["Company Policy Table (live from Supabase — active users only):"]
+        lines.append(f"  Standard limits: Meal Tier I ₹{rows[0].get('meal_tier1_limit', 900)}/day | "
+                     f"Tier II ₹{rows[0].get('meal_tier2_limit', 700)}/day | "
+                     f"Tier III ₹{rows[0].get('meal_tier3_limit', 450)}/day")
+        lines.append(f"  Receipt required: {rows[0].get('requires_receipt', True)} | "
+                     f"Reimbursement cycle: {rows[0].get('reimbursement_cycle', '15-25 of month')}")
+        lines.append("")
+
+        overridden = [p for p in rows if p.get("override_meal_tier1_limit") or
+                      p.get("override_travel_daily_limit") or p.get("override_hotel_daily_limit")]
+        if overridden:
+            lines.append("  Active overrides:")
+            for p in overridden:
+                valid_from = (p.get("override_valid_from") or "")[:10]
+                valid_until = (p.get("override_valid_until") or "")[:10]
+                parts = []
+                if p.get("override_meal_tier1_limit"):
+                    parts.append(f"Meal Tier I → ₹{p['override_meal_tier1_limit']}/day")
+                if p.get("override_travel_daily_limit"):
+                    parts.append(f"Travel → ₹{p['override_travel_daily_limit']}/day")
+                if p.get("override_hotel_daily_limit"):
+                    parts.append(f"Hotel → ₹{p['override_hotel_daily_limit']}/day")
+                lines.append(
+                    f"    {p.get('user_name', 'Unknown')}: {', '.join(parts)} "
+                    f"({valid_from} – {valid_until}) reason: {p.get('override_reason', '—')}"
+                )
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        safe_print(f"[AuditAgent] fetch_all_policies_summary error: {e}")
+        return defaults_text
+
+
 def fetch_user_effective_policy(
     user_phone: str,
     user_id_override: Optional[str] = None,
@@ -507,18 +574,15 @@ def audit_before_model(
         computed_reimbursable = 0.0
         pp_block = "PRE-FLIGHT: POLICY CAP CHECK: Could not compute."
 
-    # ── Read global policy KB ─────────────────────────────────────────────
-    kb_path = os.path.join(os.path.dirname(__file__), "knowledgebase.md")
-    global_policy = "No global policy file found."
-    if os.path.exists(kb_path):
-        with open(kb_path, "r", encoding="utf-8") as f:
-            global_policy = f.read()
+    # ── Fetch global policy summary live from Supabase ───────────────────
+    global_policy = fetch_all_policies_summary()
+    safe_print(f"[AuditAgent] Policy summary fetched ({len(global_policy)} chars)")
 
     system_prompt = f"""You are the AI Audit Agent for Fristine Infotech.
 Analyse the expense claim using the PRE-COMPUTED FACTS below. Do NOT call any external API or guess data — use only what is provided.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-GLOBAL POLICY (reference only — user-specific values override these):
+COMPANY POLICY (live from Supabase — user-specific limits below override these):
 {global_policy}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

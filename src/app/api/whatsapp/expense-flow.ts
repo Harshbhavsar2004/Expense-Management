@@ -127,7 +127,7 @@ function generateAppId(): string {
 async function finalizeApplication(phone: string, session: ExpenseSession, supabaseClient?: any): Promise<void> {
   session.applicationId = generateAppId();
   session.step = "idle";
-  
+
   await saveApplicationToSupabase({
     userPhone: phone,
     applicationId: session.applicationId,
@@ -158,9 +158,8 @@ async function finalizeApplication(phone: string, session: ExpenseSession, supab
     { id: "ADD_EXPENSE", label: "Add Expense" },
     { id: "MAIN_MENU",   label: "Main Menu"   },
   ]);
-  
-  const { setSession } = await import("./session");
-  setSession(phone, session);
+
+  await setSession(phone, session);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,7 +183,7 @@ export async function handleExpenseFlow(
     case "awaiting_app_client": {
       session.clientName = incomingText.trim();
       session.step = "awaiting_app_duration";
-      setSession(phone, session);
+      await setSession(phone, session);
       await sendText(phone, "*Step 2: Duration*\n\nPlease enter the duration of the visit (e.g., '10 Mar 2026 - 15 Mar 2026').");
       break;
     }
@@ -192,7 +191,7 @@ export async function handleExpenseFlow(
     case "awaiting_app_duration": {
       session.visitDuration = incomingText.trim();
       session.step = "awaiting_app_city";
-      setSession(phone, session);
+      await setSession(phone, session);
       await sendText(phone, "*Step 3: City*\n\nPlease enter the name of the city you are visiting.");
       break;
     }
@@ -200,14 +199,12 @@ export async function handleExpenseFlow(
     case "awaiting_app_city": {
       session.city = incomingText.trim();
       session.cityTier = getCityTier(session.city);
-      
+      session.step = "awaiting_app_participants_count";
+      await setSession(phone, session);
       await sendCard(phone, "Participants", "Is this trip for you only or are there multiple participants?", "Fristine Infotech", [
         { id: "PARTICIPANTS_SELF",  label: "Just Me"           },
         { id: "PARTICIPANTS_MULTI", label: "Multiple People"   },
       ]);
-      
-      session.step = "awaiting_app_participants_count";
-      setSession(phone, session);
       break;
     }
 
@@ -215,24 +212,22 @@ export async function handleExpenseFlow(
       if (input === "PARTICIPANTS_SELF") {
         session.appParticipantCount = 1;
         session.appParticipantDetails = [];
-        // Finalize application
         return finalizeApplication(phone, session, supabaseClient);
       } else if (input === "PARTICIPANTS_MULTI") {
         await sendText(phone, "Please enter the number of participants (including yourself):");
-        // Keep step but wait for number
         return;
       }
-      
+
       const count = parseInt(incomingText.trim());
       if (isNaN(count) || count < 1) {
         await sendText(phone, "Please enter a valid number (e.g., 2, 3, 4).");
         return;
       }
-      
+
       session.appParticipantCount = count;
-      await sendText(phone, `Please enter the names and mobile numbers of the other ${count - 1} participants.\nFormat:\nName - Number\nName - Number`);
       session.step = "awaiting_app_participants_details";
-      setSession(phone, session);
+      await setSession(phone, session);
+      await sendText(phone, `Please enter the names and mobile numbers of the other ${count - 1} participants.\nFormat:\nName - Number\nName - Number`);
       break;
     }
 
@@ -251,7 +246,7 @@ export async function handleExpenseFlow(
     case "awaiting_app_selection_add": {
       session.applicationId = incomingText.trim().toUpperCase();
       session.step = "awaiting_receipt";
-      setSession(phone, session);
+      await setSession(phone, session);
       await sendText(phone, `*App Selected: ${session.applicationId}*\n\n*Step 2: Upload Receipt*\n\nPlease upload the UPI screenshot or payment receipt.`);
       break;
     }
@@ -261,16 +256,16 @@ export async function handleExpenseFlow(
       const appId = incomingText.trim().toUpperCase();
       const { getExpensesByApplication } = await import("./db");
       const rows = await getExpensesByApplication(phone, appId, session.userId, supabaseClient);
-      
+
       if (rows.length === 0) {
         await sendText(phone, `No expenses found for Application ID: *${appId}*.`);
       } else {
-        let summary = rows.map((r, i) => `*${i+1}.* ${r.expense_type} - ${r.claimed_amount}\n   ${new Date(r.created_at).toLocaleDateString("en-IN")}`).join("\n\n");
+        const summary = rows.map((r, i) => `*${i+1}.* ${r.expense_type} - ${r.claimed_amount}\n   ${new Date(r.created_at).toLocaleDateString("en-IN")}`).join("\n\n");
         await sendText(phone, `*History for ${appId}*\n\n${summary}`);
       }
-      
+
       session.step = "idle";
-      setSession(phone, session);
+      await setSession(phone, session);
       break;
     }
 
@@ -283,10 +278,9 @@ export async function handleExpenseFlow(
 
       await sendText(phone, "_Extracting data from screenshot..._");
       const extracted = await analyseReceipt(mediaBase64, mediaMimeType);
-      
+
       extracted.transactionTime = (extracted as any).time;
 
-      // Predict category using new agent
       const prediction = await predictCategory(
         extracted.merchant || "Unknown",
         extracted.date || "Unknown",
@@ -294,7 +288,6 @@ export async function handleExpenseFlow(
       );
       extracted.merchantCategory = prediction.category;
 
-      // Upload image to Supabase Storage and keep the public URL
       const imageUrl = await uploadReceiptImage(mediaBase64, mediaMimeType, phone, 0, supabaseClient);
 
       session.receiptMediaIds = [mediaId];
@@ -304,7 +297,7 @@ export async function handleExpenseFlow(
       session.amount = extracted.amount;
       session.amountNumeric = extracted.amountNumeric;
       session.step = "awaiting_verification";
-      setSession(phone, session);
+      await setSession(phone, session);
 
       await sendVerificationCard(phone, session);
       break;
@@ -314,7 +307,7 @@ export async function handleExpenseFlow(
       if (session.extractedReceipts && session.extractedReceipts.length > 0) {
         session.extractedReceipts[0].merchantCategory = incomingText.trim();
         session.step = "awaiting_verification";
-        setSession(phone, session);
+        await setSession(phone, session);
         await sendVerificationCard(phone, session);
       }
       break;
@@ -325,7 +318,7 @@ export async function handleExpenseFlow(
         await finalizeExpense(phone, session, supabaseClient);
       } else if (input === "ADD_MANUAL_CAT") {
         session.step = "awaiting_manual_category";
-        setSession(phone, session);
+        await setSession(phone, session);
         await sendText(phone, "Please type the correct category for this expense (e.g., 'Travel', 'Lunch', 'Hotel').");
       }
       break;
@@ -408,7 +401,7 @@ export async function finalizeExpense(phone: string, session: ExpenseSession, su
   
   const expenseId = await saveExpenseToSupabase(record, session.userId, supabaseClient);
 
-  clearSession(phone);
+  await clearSession(phone);
 
   await sendCard(
     phone,
@@ -459,9 +452,9 @@ export async function finalizeExpense(phone: string, session: ExpenseSession, su
 }
 
 export async function sendAppList(to: string, step: "awaiting_app_selection_add" | "awaiting_app_selection_view", supabaseClient?: any): Promise<void> {
-  const session = getSession(to);
+  const session = await getSession(to);
   const apps = await getUserApplications(to, session.userId, supabaseClient);
-  
+
   if (apps.length === 0) {
     await sendText(to, "No expense reports found. Please create one first.");
     return;
@@ -478,9 +471,9 @@ export async function sendAppList(to: string, step: "awaiting_app_selection_add"
       rows: apps.slice(0, 10).map(id => ({ id, title: id }))
     }]
   );
-  
+
   session.step = step;
-  setSession(to, session);
+  await setSession(to, session);
 }
 
 export async function sendExpenseMenu(phone: string): Promise<void> {

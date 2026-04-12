@@ -139,7 +139,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const phone: string = message.from;
     const userName: string | undefined = contact?.profile?.name;
-    const session = getSession(phone);
+    const session = await getSession(phone);
 
     // Link WhatsApp phone to a user profile in public.users if not already in session
     if (!session.userId) {
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (userName && !session.userName) {
       session.userName = userName;
-      setSession(phone, session);
+      await setSession(phone, session);
     }
 
     console.log(`[WA] ${message.type} from ${phone} (${userName ?? "?"}) — step: ${session.step}`);
@@ -198,11 +198,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       // ── Main navigation ──
       if (buttonId === "CREATE_EXP_REPORT") {
-        clearSession(phone);
-        const fresh = getSession(phone);
+        await clearSession(phone);
+        const fresh = await getSession(phone);
         fresh.userName = userName;
         fresh.step = "awaiting_app_client";
-        setSession(phone, fresh);
+        await setSession(phone, fresh);
         await sendText(phone, "*Step 1: Client Name*\n\nPlease enter the name of the client for this expense report.");
         return new NextResponse("OK", { status: 200 });
       }
@@ -220,7 +220,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
 
       if (buttonId === "MAIN_MENU") {
-        clearSession(phone);
+        await clearSession(phone);
         await sendWelcomeCard(phone, userName);
         return new NextResponse("OK", { status: 200 });
       }
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       if (buttonId === "ADD_MANUAL_CAT" && session.step === "awaiting_verification") {
         session.step = "awaiting_manual_category";
-        setSession(phone, session);
+        await setSession(phone, session);
         await sendText(phone, "Please enter the merchant category manually (e.g., Food, Travel, etc.).");
         return new NextResponse("OK", { status: 200 });
       }
@@ -262,7 +262,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       // Greetings → welcome
       if (["hi", "hii", "hello", "hey", "start", "menu"].includes(lower)) {
-        clearSession(phone);
+        await clearSession(phone);
         await sendWelcomeCard(phone, userName);
         return new NextResponse("OK", { status: 200 });
       }

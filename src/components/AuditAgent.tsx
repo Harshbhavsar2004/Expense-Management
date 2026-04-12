@@ -616,8 +616,9 @@ export function AuditAgent({
           display: flex; flex-direction: column;
           background: #FFFFFF; overflow: hidden;
         }
-        /* Force CopilotKit root to fill and flex-column */
-        .ea-body > div {
+        /* CopilotKit root wrapper — fill space, flex-column, clip overflow */
+        .ea-body > div,
+        .ea-copilot-chat {
           flex: 1 !important;
           min-height: 0 !important;
           display: flex !important;
@@ -625,9 +626,21 @@ export function AuditAgent({
           overflow: hidden !important;
         }
 
-        /* ── Messages area scrolls ── */
+        /* ── Messages area: scrolls vertically ── */
         .ea-body [class*="Messages"],
-        .ea-body [class*="messages"] {
+        .ea-body [class*="messages"],
+        .ea-body [class*="ScrollArea"],
+        .ea-body [class*="scroll-area"],
+        .ea-body [class*="MessageList"],
+        .ea-body [class*="message-list"] {
+          flex: 1 1 auto !important;
+          overflow-y: auto !important;
+          min-height: 0 !important;
+          scrollbar-width: thin !important;
+          scrollbar-color: #E2E8F0 transparent !important;
+        }
+        /* Fallback: any direct child of ea-copilot-chat that isn't the input */
+        .ea-copilot-chat > div:not([class*="Input"]):not([class*="input"]) {
           flex: 1 1 auto !important;
           overflow-y: auto !important;
           min-height: 0 !important;

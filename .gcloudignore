@@ -12,6 +12,7 @@ node_modules/
 *.json
 !agent/pyproject.toml
 !agent/uv.lock
+!agent/knowledgebase.md
 
 # Exclude local env files
 .env

@@ -351,7 +351,7 @@ export function WhatsAppChat({ userName = "User", phone: initialPhone = "" }: Wh
 
           {/* Name + status */}
           <div className="flex-1 min-w-0">
-            <p className="text-[15px] font-bold text-white leading-tight">AI Audit Assistant</p>
+            <p className="text-[15px] font-bold text-white leading-tight">Expify Assistant</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#25D366] animate-pulse" />
               <span className="text-[11px] text-white/60 font-medium">online</span>

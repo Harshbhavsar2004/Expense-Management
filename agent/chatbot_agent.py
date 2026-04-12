@@ -55,18 +55,17 @@ def chatbot_before_model(
 
     safe_print("[ChatbotAgent] on_before_model called")
 
-    kb_path = os.path.join(os.path.dirname(__file__), "knowledgebase.md")
-    policy = "No policy found."
-    if os.path.exists(kb_path):
-        with open(kb_path, "r", encoding="utf-8") as f:
-            policy = f.read()
+    # Fetch live policy from Supabase — same source-of-truth as audit_agent
+    from audit_agent import fetch_all_policies_summary  # reuse without duplication
+    policy = fetch_all_policies_summary()
+    safe_print(f"[ChatbotAgent] Policy loaded from Supabase ({len(policy)} chars)")
 
     system_prompt = f"""You are the Expense Intelligence Chatbot for Fristine Infotech.
 Your job is to help users and admins understand the status of their expense applications and clarify audit findings.
 
 SESSION: {callback_context.session}
 
-REIMBURSEMENT POLICY:
+REIMBURSEMENT POLICY (live from Supabase):
 {policy}
 
 CONTEXTUAL INFORMATION:
