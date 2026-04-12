@@ -1402,11 +1402,13 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
             # ── Upstream: client → Gemini ─────────────────────────────
             _audio_chunk_count = 0
 
+            # Shared stop event — either side sets this to tear down the other
+            _stop = asyncio.Event()
+
             async def client_to_gemini():
                 nonlocal _audio_chunk_count
                 try:
-
-                    while True:
+                    while not _stop.is_set():
                         message = await ws.receive()
 
                         if "bytes" in message:
@@ -1416,7 +1418,6 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
                                     f"[WS] Received audio chunk #{_audio_chunk_count}: "
                                     f"{len(message['bytes'])} bytes"
                                 )
-                            # Binary frame = raw PCM audio
                             await session.send_realtime_input(
                                 audio=types.Blob(
                                     data=message["bytes"],
@@ -1434,16 +1435,22 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
 
                 except _WebSocketDisconnect:
                     logger.info(f"[WS] Client disconnected: {session_id}")
+                except asyncio.CancelledError:
+                    pass
                 except Exception as exc:
                     logger.error(f"[WS] upstream error: {exc}")
+                finally:
+                    _stop.set()  # signal gemini_to_client to stop
 
             # ── Downstream: Gemini → client ───────────────────────────
             async def gemini_to_client(admin_id: str | None = None):
                 _event_count = 0
                 try:
                     logger.info("[WS] gemini_to_client: starting receive loop")
-                    while True:
+                    while not _stop.is_set():
                         async for response in session.receive():
+                            if _stop.is_set():
+                                break
                             _event_count += 1
                             if response is None:
                                 continue
@@ -1471,9 +1478,8 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
                                             "type": "text_out",
                                             "text": part.text,
                                         })
-                                    
+
                                     # ── GROUNDING DEBUG ───────────────────────────
-                                    # grounding_metadata is typically in server_content (sc)
                                     gm = getattr(sc, "grounding_metadata", None)
                                     if gm:
                                         logger.info(f"[WS] [GROUNDING] Grounding results found!")
@@ -1481,11 +1487,11 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
                                             sep = gm.search_entry_point
                                             rendered = getattr(sep, "rendered_content", "")
                                             logger.info(f"[WS] [GROUNDING] Search entry point: {rendered[:100]}...")
-                                        
+
                                         chunks = getattr(gm, "grounding_chunks", []) or []
                                         if chunks:
                                             logger.info(f"[WS] [GROUNDING] Found {len(chunks)} chunks from search.")
-                                        
+
                                         supports = getattr(gm, "grounding_supports", []) or []
                                         if supports:
                                             logger.info(f"[WS] [GROUNDING] Found {len(supports)} supports/citations.")
@@ -1522,22 +1528,42 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
                             if response.tool_call:
                                 await _handle_tool_call(session, response.tool_call, ws, dynamic_tools, admin_id=admin_id)
 
-                        # If the generator finishes naturally, wait a bit and restart
-                        # unless the session is closed.
+                        # Generator finished naturally — exit if stop signalled
+                        if _stop.is_set():
+                            break
                         await asyncio.sleep(0.1)
 
                 except _WebSocketDisconnect:
                     logger.info("[WS] gemini_to_client: client disconnected")
+                except asyncio.CancelledError:
+                    pass
                 except Exception as exc:
-                    logger.error(f"[WS] downstream error: {exc}")
-                    traceback.print_exc()
+                    # 1008 GoAway = Gemini closed the session (tab left open, timeout, etc.)
+                    # Log at info level — this is expected, not a crash
+                    err_str = str(exc)
+                    if "1008" in err_str or "GoAway" in err_str or "policy violation" in err_str:
+                        logger.info(f"[WS] Gemini session closed by server (GoAway/timeout): {session_id}")
+                    else:
+                        logger.error(f"[WS] downstream error: {exc}")
+                        traceback.print_exc()
                     try:
-                        await ws.send_json({"type": "error", "message": str(exc)})
+                        await ws.send_json({"type": "session_ended", "reason": "Gemini session expired. Please reconnect."})
                     except Exception:
                         pass
+                finally:
+                    _stop.set()  # signal client_to_gemini to stop
 
-            # Run both directions concurrently
-            await asyncio.gather(client_to_gemini(), gemini_to_client(admin_id=admin_id))
+            # Run both directions as cancellable tasks so either side can tear down the other
+            upstream = asyncio.create_task(client_to_gemini())
+            downstream = asyncio.create_task(gemini_to_client(admin_id=admin_id))
+            try:
+                await asyncio.gather(upstream, downstream)
+            except Exception:
+                pass
+            finally:
+                upstream.cancel()
+                downstream.cancel()
+                await asyncio.gather(upstream, downstream, return_exceptions=True)
 
     except _WebSocketDisconnect:
         logger.info(f"[WS] Client disconnected: {session_id}")
