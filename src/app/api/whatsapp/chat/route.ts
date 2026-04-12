@@ -112,7 +112,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       await saveChatMessage({ userId, phone, role: "user", content: "Sent an image", messageType: "image" }, supabase);
     }
 
-    const session = getSession(phone);
+    const session = await getSession(phone);
 
     // Persist userId in session so expense-flow can find it
     if (userId) {
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Persist userName in session
     if (userName && !session.userName) {
       session.userName = userName;
-      setSession(phone, session);
+      await setSession(phone, session);
     }
 
     // ── BUTTON / LIST REPLY ──────────────────────────────────────────────────
@@ -131,11 +131,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const title = buttonTitle ?? "";
 
       if (id === "CREATE_EXP_REPORT") {
-        clearSession(phone);
-        const fresh = getSession(phone);
+        await clearSession(phone);
+        const fresh = await getSession(phone);
         fresh.userName = userName;
         fresh.step = "awaiting_app_client";
-        setSession(phone, fresh);
+        await setSession(phone, fresh);
         // sendText captured:
         const { sendText } = await import("../whatsapp");
         await sendText(phone, "*Step 1: Client Name*\n\nPlease enter the name of the client for this expense report.");
@@ -146,14 +146,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         const { sendAppList } = await import("../expense-flow");
         await sendAppList(phone, "awaiting_app_selection_view", supabase);
       } else if (id === "MAIN_MENU") {
-        clearSession(phone);
+        await clearSession(phone);
         await sendWelcomeCard(phone, userName);
       } else if (id === "VERIFY_YES" && (session.step === "awaiting_verification" || session.step === "awaiting_manual_category")) {
         const { finalizeExpense } = await import("../expense-flow");
         await finalizeExpense(phone, session, supabase);
       } else if (id === "ADD_MANUAL_CAT" && session.step === "awaiting_verification") {
         session.step = "awaiting_manual_category";
-        setSession(phone, session);
+        await setSession(phone, session);
         const { sendText } = await import("../whatsapp");
         await sendText(phone, "Please enter the merchant category manually (e.g., Food, Travel, etc.).");
       } else if (session.step === "awaiting_app_selection_add" || session.step === "awaiting_app_selection_view") {
@@ -211,7 +211,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       // Greeting → welcome card
       if (["hi", "hii", "hello", "hey", "start", "menu"].includes(lower)) {
-        clearSession(phone);
+        await clearSession(phone);
         await sendWelcomeCard(phone, userName);
         
         const botMessages = popCapture(phone);
