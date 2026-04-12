@@ -78,6 +78,5 @@ export default function StandaloneDashboardPage() {
     );
   }
 
-  // hideHeader: true because user said "without sidebar and topbar"
-  return <DashboardRenderer spec={spec} hideHeader={true} />;
+  return <DashboardRenderer spec={spec} />;
 }

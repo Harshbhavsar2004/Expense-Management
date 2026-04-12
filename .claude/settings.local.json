@@ -12,7 +12,15 @@
       "WebFetch(domain:www.copilotkit.ai)",
       "WebFetch(domain:ai.pydantic.dev)",
       "WebFetch(domain:pydantic.dev)",
-      "Bash(find . -maxdepth 2 -type d ! -path './.git/*' ! -path './.next/*' ! -path './node_modules' -exec sh -c 'du -sh \"$1\" 2>/dev/null | grep -v \"^0\"' _ {} \\\\;)"
+      "Bash(find . -maxdepth 2 -type d ! -path './.git/*' ! -path './.next/*' ! -path './node_modules' -exec sh -c 'du -sh \"$1\" 2>/dev/null | grep -v \"^0\"' _ {} \\\\;)",
+      "Bash(\"c:\\\\Users\\\\hbhav\\\\Desktop\\\\Projects\\\\Fristine Infotech\\\\Expense-management\\\\expense-tracker\\\\agent\\\\.venv\\\\Scripts\\\\activate\")",
+      "Bash(python -c \"import voice_agent; print\\('OK'\\)\")",
+      "Bash(\"c:\\\\Users\\\\hbhav\\\\Desktop\\\\Projects\\\\Fristine Infotech\\\\Expense-management\\\\expense-tracker\\\\agent\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import ast, sys; ast.parse\\(open\\('voice_agent.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(\"c:\\\\Users\\\\hbhav\\\\Desktop\\\\Projects\\\\Fristine Infotech\\\\Expense-management\\\\expense-tracker\\\\agent\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import ast, sys; ast.parse\\(open\\('voice_agent.py', encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "code-review-graph"
+  ]
 }

@@ -203,7 +203,7 @@ export default function MessageBubble({ msg, idx }: MessageBubbleProps) {
             </div>
           )
         ) : dashboardSpec ? (
-          <DashboardRenderer spec={dashboardSpec} />
+          <DashboardRenderer spec={dashboardSpec} hideHeader={true} />
         ) : (dashboardLinks.length > 0 || cleanContent) ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {dashboardLinks.map((link, i) => (

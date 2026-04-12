@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, ShieldCheck, Clock, RefreshCw, Send, CheckCircle2,
@@ -8,7 +8,7 @@ import {
   Utensils, UtensilsCrossed, Car, Hotel, Fuel, Phone, Heart, Package, Plane,
   Receipt, ShoppingBag, ShoppingCart, Wifi, Coffee, Croissant, MapPin, Building2,
   Eye, EyeOff, BadgeCheck, CalendarDays,
-  IndianRupee, CircleDot, FileText
+  IndianRupee, CircleDot, FileText, Upload, Loader2, CheckCheck
 } from "lucide-react";
 import { AuditAgent } from "@/components/AuditAgent";
 import { ExpenseRow } from "@/components/ExpensesTable";
@@ -443,9 +443,17 @@ function ExpenseDetailPanel({
   onViewScreenshot: (url: string) => void;
   onViewDuplicate: (id: string) => void;
 }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploadDone, setUploadDone] = useState(false);
+  const [extractedInfo, setExtractedInfo] = useState<{
+    merchant?: string; date?: string; amount?: string; category?: string;
+  } | null>(null);
+  const receiptFileRef = useRef<HTMLInputElement>(null);
+
   if (!expense) return null;
 
-  const screenshotUrl = resolveScreenshotUrl(expense);
+  const screenshotUrl = uploadedImageUrl || resolveScreenshotUrl(expense);
   const hasMismatch = expense.audit_result?.mismatch === true ||
     (Array.isArray((expense as any).mismatches) && (expense as any).mismatches.length > 0);
   const auditNote = expense.audit_result?.note || (expense as any).audit_explanation;
@@ -454,6 +462,40 @@ function ExpenseDetailPanel({
     : [];
   const { claimed, approved } = resolveAmounts(expense);
   const displayApproved = hasMismatch ? 0 : approved;
+
+  const handleReceiptUpload = async (file: File) => {
+    if (!expense.id) return;
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target?.result as string;
+        const base64 = dataUrl.split(",")[1];
+        const mimeType = file.type || "image/jpeg";
+
+        const res = await fetch("/api/expenses/upload-receipt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64, mimeType, expenseId: expense.id }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setUploadedImageUrl(data.imageUrl);
+          setExtractedInfo({
+            merchant: data.extracted?.merchant,
+            date: data.extracted?.date,
+            amount: data.extracted?.amount,
+            category: data.category,
+          });
+          setUploadDone(true);
+        }
+        setUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setUploading(false);
+    }
+  };
 
   return (
     <div className="w-80 shrink-0 border-l border-slate-100 bg-white flex flex-col overflow-hidden">
@@ -480,24 +522,86 @@ function ExpenseDetailPanel({
 
         {/* Screenshot */}
         {screenshotUrl ? (
-          <div className="group/img relative cursor-zoom-in" onClick={() => onViewScreenshot(screenshotUrl)}>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Payment Screenshot</p>
-            <div className="relative rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
-              <img
-                src={screenshotUrl}
-                alt="Payment Screenshot"
-                className="w-full object-contain max-h-64 transition-transform duration-300 group-hover/img:scale-105"
-              />
-              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/5 flex items-center justify-center transition-colors">
-                <Eye size={20} className="text-white opacity-0 group-hover/img:opacity-100 transition-opacity" />
+          <div>
+            <div className="group/img relative cursor-zoom-in" onClick={() => onViewScreenshot(screenshotUrl)}>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                {uploadDone ? "Cash Receipt" : "Payment Screenshot"}
+              </p>
+              <div className="relative rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
+                <img
+                  src={screenshotUrl}
+                  alt="Receipt"
+                  className="w-full object-contain max-h-64 transition-transform duration-300 group-hover/img:scale-105"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/5 flex items-center justify-center transition-colors">
+                  <Eye size={20} className="text-white opacity-0 group-hover/img:opacity-100 transition-opacity" />
+                </div>
               </div>
+              <p className="text-[9px] text-center text-slate-400 mt-2 font-medium">Click to expand</p>
             </div>
-            <p className="text-[9px] text-center text-slate-400 mt-2 font-medium">Click to expand</p>
+            {/* Show extracted info from OCR after cash upload */}
+            {extractedInfo && (
+              <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-100 p-3 flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <CheckCheck size={12} className="text-emerald-500" />
+                  <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Receipt Scanned</span>
+                </div>
+                {extractedInfo.merchant && (
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-slate-400">Merchant</span>
+                    <span className="text-[10px] font-semibold text-slate-700">{extractedInfo.merchant}</span>
+                  </div>
+                )}
+                {extractedInfo.date && (
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-slate-400">Date</span>
+                    <span className="text-[10px] font-semibold text-slate-700">{extractedInfo.date}</span>
+                  </div>
+                )}
+                {extractedInfo.amount && (
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-slate-400">Amount</span>
+                    <span className="text-[10px] font-semibold text-slate-700">{extractedInfo.amount}</span>
+                  </div>
+                )}
+                {extractedInfo.category && (
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-slate-400">Category</span>
+                    <span className="text-[10px] font-semibold text-slate-700 capitalize">{extractedInfo.category}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center py-8 gap-2">
-            <EyeOff size={20} className="text-slate-300" />
-            <p className="text-[11px] text-slate-400 font-medium">No screenshot uploaded</p>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Receipt / Screenshot</p>
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center py-6 gap-3">
+              <EyeOff size={18} className="text-slate-300" />
+              <p className="text-[11px] text-slate-400 font-medium">No receipt uploaded</p>
+              {/* Cash receipt upload */}
+              <input
+                ref={receiptFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptUpload(f); }}
+              />
+              <button
+                onClick={() => receiptFileRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-600 text-[11px] font-semibold hover:bg-blue-100 transition-colors disabled:opacity-50"
+              >
+                {uploading ? (
+                  <><Loader2 size={11} className="animate-spin" /> Scanning…</>
+                ) : (
+                  <><Upload size={11} /> Upload Cash Receipt</>
+                )}
+              </button>
+              <p className="text-[9px] text-slate-400 text-center px-4">
+                Upload a receipt image — date, vendor &amp; category will be auto-detected
+              </p>
+            </div>
           </div>
         )}
 

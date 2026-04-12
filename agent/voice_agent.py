@@ -576,6 +576,280 @@ async def generate_dashboard(title: str, charts_json: str) -> str:
         return f"Failed to create dashboard: {exc}"
 
 
+# ─── Smart dashboard builder — fetches & formats data internally ──────────────
+
+DASHBOARD_COLORS = ["#6366F1", "#8B5CF6", "#F472B6", "#34D399", "#F59E0B", "#60A5FA", "#FB923C", "#A78BFA"]
+
+
+async def build_and_save_dashboard(
+    title: str,
+    chart_types: str,
+    user_id: str = None,
+    organization: str = None,
+    team: str = None,
+) -> str:
+    """
+    PREFERRED dashboard tool. Fetches real data and builds charts automatically.
+    chart_types: comma-separated — any of:
+      expenses_by_category, expenses_by_user, flagged_breakdown,
+      user_stats, applications_summary, mismatch_breakdown
+    Optional filters: user_id, organization, team.
+    Returns [dashboard_id:uuid]Title.
+    """
+    charts = []
+    requested = [r.strip().lower() for r in chart_types.split(",")]
+
+    async def _fetch(table: str, params: Any) -> List[Dict]:
+        r = await _get_http_client().get(
+            f"{_supabase_url()}/rest/v1/{table}",
+            headers=_supabase_headers(),
+            params=params,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    try:
+        for req in requested:
+
+            # ── expenses_by_category ─────────────────────────────────────────
+            if req == "expenses_by_category":
+                params: List = [
+                    ("select", "expense_type,claimed_amount_numeric"),
+                    ("order", "created_at.desc"), ("limit", "300"),
+                ]
+                if user_id:      params.append(("user_id",      f"eq.{user_id}"))
+                if organization: params.append(("organization", f"eq.{organization}"))
+                if team:         params.append(("team",         f"eq.{team}"))
+                rows = await _fetch("expenses", params)
+
+                totals: Dict[str, float] = {}
+                for row in rows:
+                    cat = (row.get("expense_type") or "other").lower().strip()
+                    totals[cat] = totals.get(cat, 0.0) + float(row.get("claimed_amount_numeric") or 0)
+                data = [{"label": k.title(), "value": round(v, 2)}
+                        for k, v in sorted(totals.items(), key=lambda x: -x[1]) if v > 0]
+                if data:
+                    charts.append({"type": "donut", "title": "Expenses by Category",
+                                   "unit": "₹", "category_key": "label", "value_key": "value",
+                                   "colors": DASHBOARD_COLORS, "data": data})
+                    charts.append({"type": "bar", "title": "Category Breakdown",
+                                   "unit": "₹", "x_key": "label", "y_key": "value",
+                                   "colors": DASHBOARD_COLORS, "data": data})
+
+            # ── expenses_by_user / top_claimants ─────────────────────────────
+            elif req in ("expenses_by_user", "top_claimants"):
+                params = [
+                    ("select", "user_name,claimed_amount_numeric,reimbursable_amount"),
+                    ("order", "created_at.desc"), ("limit", "300"),
+                ]
+                if user_id:      params.append(("user_id",      f"eq.{user_id}"))
+                if organization: params.append(("organization", f"eq.{organization}"))
+                rows = await _fetch("expenses", params)
+
+                claimed_map: Dict[str, float] = {}
+                approved_map: Dict[str, float] = {}
+                for row in rows:
+                    name = row.get("user_name") or "Unknown"
+                    claimed_map[name]  = claimed_map.get(name, 0.0)  + float(row.get("claimed_amount_numeric") or 0)
+                    approved_map[name] = approved_map.get(name, 0.0) + float(row.get("reimbursable_amount") or 0)
+                data = [
+                    {"label": k, "claimed": round(claimed_map[k], 2), "approved": round(approved_map[k], 2)}
+                    for k in sorted(claimed_map, key=lambda x: -claimed_map[x])
+                ]
+                if data:
+                    charts.append({"type": "bar", "title": "Claimed vs Approved per Employee",
+                                   "unit": "₹", "x_key": "label", "y_key": "claimed",
+                                   "colors": DASHBOARD_COLORS, "data": data})
+
+            # ── flagged_breakdown ────────────────────────────────────────────
+            elif req == "flagged_breakdown":
+                params = [
+                    ("select", "mismatches,claimed_amount_numeric,user_name"),
+                    ("verified", "eq.false"), ("order", "created_at.desc"), ("limit", "300"),
+                ]
+                if user_id: params.append(("user_id", f"eq.{user_id}"))
+                rows = await _fetch("expenses", params)
+
+                counts: Dict[str, int] = {}
+                table_rows: List[Dict] = []
+                for row in rows:
+                    mismatches = row.get("mismatches") or []
+                    for m in mismatches:
+                        counts[m] = counts.get(m, 0) + 1
+                    if mismatches:
+                        table_rows.append({
+                            "Employee": row.get("user_name") or "—",
+                            "Flags":    ", ".join(mismatches),
+                            "Claimed":  f"₹{round(float(row.get('claimed_amount_numeric') or 0)):,}",
+                        })
+                data = [{"label": k.replace("_", " ").title(), "value": v}
+                        for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+                if data:
+                    charts.append({"type": "donut", "title": "Flagged Expense Types",
+                                   "category_key": "label", "value_key": "value",
+                                   "colors": DASHBOARD_COLORS, "data": data})
+                if table_rows:
+                    charts.append({"type": "table", "title": "Flagged Expenses Detail",
+                                   "columns": [{"key": "Employee", "label": "Employee"},
+                                               {"key": "Flags",    "label": "Mismatch Flags"},
+                                               {"key": "Claimed",  "label": "Claimed"}],
+                                   "rows": table_rows[:50]})
+
+            # ── user_stats ───────────────────────────────────────────────────
+            elif req == "user_stats":
+                stat_params: Dict[str, Any] = {"select": "*"}
+                if user_id: stat_params["user_id"] = f"eq.{user_id}"
+                rows = await _fetch("user_expense_stats", stat_params)
+
+                bar_data: List[Dict] = []
+                table_rows = []
+                for row in rows:
+                    name    = row.get("full_name") or "Unknown"
+                    claimed = float(row.get("total_claimed") or 0)
+                    appr    = float(row.get("total_approved") or 0)
+                    rate    = float(row.get("reimbursement_rate_pct") or 0)
+                    bar_data.append({"label": name, "claimed": round(claimed, 2), "approved": round(appr, 2)})
+                    table_rows.append({
+                        "Employee": name,
+                        "Claimed":  f"₹{round(claimed):,}",
+                        "Approved": f"₹{round(appr):,}",
+                        "Rate":     f"{round(rate * 100, 1)}%",
+                    })
+                if bar_data:
+                    charts.append({"type": "bar", "title": "Claimed vs Approved per Employee",
+                                   "unit": "₹", "x_key": "label", "y_key": "claimed",
+                                   "colors": DASHBOARD_COLORS, "data": bar_data})
+                    charts.append({"type": "table", "title": "Employee Stats",
+                                   "columns": [{"key": "Employee", "label": "Employee"},
+                                               {"key": "Claimed",  "label": "Claimed"},
+                                               {"key": "Approved", "label": "Approved"},
+                                               {"key": "Rate",     "label": "Approval Rate"}],
+                                   "rows": table_rows})
+
+            # ── applications_summary ─────────────────────────────────────────
+            elif req in ("applications_summary", "applications"):
+                params = [("select", "status"), ("order", "created_at.desc"), ("limit", "300")]
+                rows = await _fetch("applications", params)
+
+                counts = {}
+                for row in rows:
+                    s = (row.get("status") or "unknown").lower()
+                    counts[s] = counts.get(s, 0) + 1
+                data = [{"label": k.title(), "value": v}
+                        for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+                if data:
+                    charts.append({"type": "donut", "title": "Applications by Status",
+                                   "category_key": "label", "value_key": "value",
+                                   "colors": DASHBOARD_COLORS, "data": data})
+
+            # ── mismatch_breakdown ───────────────────────────────────────────
+            elif req == "mismatch_breakdown":
+                params = [("select", "mismatches"), ("verified", "eq.false"), ("limit", "300")]
+                if user_id: params.append(("user_id", f"eq.{user_id}"))
+                rows = await _fetch("expenses", params)
+
+                counts = {}
+                for row in rows:
+                    for m in (row.get("mismatches") or []):
+                        counts[m] = counts.get(m, 0) + 1
+                data = [{"label": k.replace("_", " ").title(), "value": v}
+                        for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+                if data:
+                    charts.append({"type": "bar", "title": "Mismatch Type Frequency",
+                                   "x_key": "label", "y_key": "value",
+                                   "colors": DASHBOARD_COLORS, "data": data})
+
+            # ── team_breakdown ───────────────────────────────────────────────
+            elif req in ("team_breakdown", "team_comparison", "by_team"):
+                # Join expenses → users to get team name per row
+                params = [
+                    ("select", "claimed_amount_numeric,reimbursable_amount,expense_type,users!inner(team,full_name)"),
+                    ("order",  "created_at.desc"),
+                    ("limit",  "500"),
+                ]
+                if organization: params.append(("users.organization", f"eq.{organization}"))
+                if team:         params.append(("users.team",         f"eq.{team}"))
+                rows = await _fetch("expenses", params)
+
+                team_claimed:  Dict[str, float] = {}
+                team_approved: Dict[str, float] = {}
+                team_cat:      Dict[str, Dict[str, float]] = {}   # team → category → amount
+                team_members:  Dict[str, set] = {}
+
+                for row in rows:
+                    t = (row.get("users") or {}).get("team") or "Unknown"
+                    emp = (row.get("users") or {}).get("full_name") or "Unknown"
+                    cat = (row.get("expense_type") or "other").lower().strip()
+                    c   = float(row.get("claimed_amount_numeric") or 0)
+                    a   = float(row.get("reimbursable_amount") or 0)
+
+                    team_claimed[t]  = team_claimed.get(t, 0.0)  + c
+                    team_approved[t] = team_approved.get(t, 0.0) + a
+                    team_members.setdefault(t, set()).add(emp)
+                    team_cat.setdefault(t, {})
+                    team_cat[t][cat] = team_cat[t].get(cat, 0.0) + c
+
+                if team_claimed:
+                    # Bar chart — claimed vs approved per team
+                    bar_data = [
+                        {"label": t, "claimed": round(team_claimed[t], 2), "approved": round(team_approved[t], 2)}
+                        for t in sorted(team_claimed, key=lambda x: -team_claimed[x])
+                    ]
+                    charts.append({"type": "bar", "title": "Expenses by Team",
+                                   "unit": "₹", "x_key": "label", "y_key": "claimed",
+                                   "colors": DASHBOARD_COLORS, "data": bar_data})
+
+                    # Donut — share of total claimed per team
+                    donut_data = [{"label": t, "value": round(v, 2)}
+                                  for t, v in sorted(team_claimed.items(), key=lambda x: -x[1])]
+                    charts.append({"type": "donut", "title": "Team Expense Share",
+                                   "unit": "₹", "category_key": "label", "value_key": "value",
+                                   "colors": DASHBOARD_COLORS, "data": donut_data})
+
+                    # Table — summary per team
+                    table_rows = []
+                    for t in sorted(team_claimed, key=lambda x: -team_claimed[x]):
+                        cl = team_claimed[t]
+                        ap = team_approved[t]
+                        rate = (ap / cl * 100) if cl > 0 else 0.0
+                        top_cat = max(team_cat[t], key=lambda x: team_cat[t][x]) if team_cat.get(t) else "—"
+                        table_rows.append({
+                            "Team":        t,
+                            "Members":     len(team_members.get(t, set())),
+                            "Claimed":     f"₹{round(cl):,}",
+                            "Approved":    f"₹{round(ap):,}",
+                            "Rate":        f"{round(rate, 1)}%",
+                            "Top Category": top_cat.title(),
+                        })
+                    charts.append({"type": "table", "title": "Team Summary",
+                                   "columns": [
+                                       {"key": "Team",         "label": "Team"},
+                                       {"key": "Members",      "label": "Members"},
+                                       {"key": "Claimed",      "label": "Claimed"},
+                                       {"key": "Approved",     "label": "Approved"},
+                                       {"key": "Rate",         "label": "Approval Rate"},
+                                       {"key": "Top Category", "label": "Top Category"},
+                                   ],
+                                   "rows": table_rows})
+
+        if not charts:
+            return _err("No data found for the requested chart types.")
+
+        r = await _get_http_client().post(
+            f"{_supabase_url()}/rest/v1/dashboards",
+            headers={**_supabase_service_headers(), "Prefer": "return=representation"},
+            json={"spec": {"type": "dashboard", "title": title, "charts": charts}},
+        )
+        r.raise_for_status()
+        saved = r.json()
+        if not saved:
+            return "Dashboard creation failed: no ID returned."
+        return f"[dashboard_id:{saved[0].get('id')}]{title}"
+
+    except Exception as exc:
+        return _err(str(exc))
+
+
 async def save_dashboard(spec: str) -> str:
     """Persist a raw dashboard specification JSON string."""
     try:
@@ -615,6 +889,7 @@ TOOL_MAP = {
     "get_expenses_detail":       get_expenses_detail,
     "generate_dashboard":        generate_dashboard,
     "save_dashboard":            save_dashboard,
+    "build_and_save_dashboard":  build_and_save_dashboard,
 }
 
 
@@ -623,7 +898,7 @@ def _thinking_label(name: str) -> str:
     if "expense"   in n: return "Fetching expenses..."
     if "user"      in n: return "Searching users..."
     if "polic"     in n: return "Checking policies..."
-    if "dashboard" in n: return "Generating dashboard..."
+    if "dashboard" in n: return "Building dashboard..."
     if "duplicate" in n: return "Checking for duplicates..."
     if "mismatch"  in n: return "Analysing mismatches..."
     return f"Using {name}..."
@@ -842,6 +1117,46 @@ GEMINI_TOOLS = [
                     required=["spec"],
                 ),
             ),
+            types.FunctionDeclaration(
+                name="build_and_save_dashboard",
+                description=(
+                    "PREFERRED tool for ALL dashboard/chart/visualization requests. "
+                    "Automatically fetches real data from the database and builds charts — "
+                    "you only specify what to show. Returns [dashboard_id:uuid]Title."
+                ),
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "title": types.Schema(
+                            type=types.Type.STRING,
+                            description="Dashboard title",
+                        ),
+                        "chart_types": types.Schema(
+                            type=types.Type.STRING,
+                            description=(
+                                "Comma-separated chart types. Available values: "
+                                "expenses_by_category, expenses_by_user, "
+                                "flagged_breakdown, user_stats, "
+                                "applications_summary, mismatch_breakdown, "
+                                "team_breakdown"
+                            ),
+                        ),
+                        "user_id": types.Schema(
+                            type=types.Type.STRING,
+                            description="Filter to a specific user UUID (optional)",
+                        ),
+                        "organization": types.Schema(
+                            type=types.Type.STRING,
+                            description="Filter by organization name (optional)",
+                        ),
+                        "team": types.Schema(
+                            type=types.Type.STRING,
+                            description="Filter by team name (optional)",
+                        ),
+                    },
+                    required=["title", "chart_types"],
+                ),
+            ),
         ]
     )
 ]
@@ -915,15 +1230,23 @@ CHAIN RULES — ALWAYS FOLLOW
    user's organization/team first (if not in context) and use them as 
    parameters in get_users, get_expenses_detail, or get_applications.
 
-8. DASHBOARDS (ZOHO ANALYTICS STYLE):
-   CRITICAL: You MUST fetch actual data BEFORE generating a dashboard.
-   a. First call resolve_user for each person to get their user_id.
-   b. Then call get_expenses_detail (with user_id) to get their actual expense records.
-   c. If get_user_stats returns empty ("[]"), fall back to get_expenses_detail or get_applications.
-   d. In charts_json, use ONLY the actual values from the fetched data — NEVER hardcode or guess amounts.
-   e. Include ALL relevant data points from the fetched results in the chart data arrays.
-   f. For chart requests, return the EXACT [dashboard_id:uuid]Title string from the tool.
-   g. Colors: #6366F1 #8B5CF6 #F472B6 #34D399 #F59E0B #60A5FA #FB923C #A78BFA
+8. DASHBOARDS:
+   ALWAYS use build_and_save_dashboard — NEVER use generate_dashboard for voice requests.
+   Steps:
+   a. If user mentions a person by name, call resolve_user first to get their user_id.
+   b. Pick chart_types from: expenses_by_category, expenses_by_user,
+      flagged_breakdown, user_stats, applications_summary, mismatch_breakdown,
+      team_breakdown.
+   c. Call build_and_save_dashboard(title, chart_types, user_id?) — it handles all data fetching internally.
+   d. Return the EXACT [dashboard_id:uuid]Title string from the tool output.
+
+   Examples:
+   - "Show all expenses dashboard"   → chart_types="expenses_by_category,expenses_by_user"
+   - "Flagged expenses dashboard"    → chart_types="flagged_breakdown"
+   - "Employee stats dashboard"      → chart_types="user_stats"
+   - "Dashboard for Rahul"           → resolve_user("Rahul") first, then build_and_save_dashboard with user_id
+   - "Team expenses dashboard"       → chart_types="team_breakdown"
+   - "Engineering team dashboard"    → chart_types="team_breakdown", team="Engineering"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EXTERNAL TOOL RULES (GMAIL/SLACK)
@@ -1295,7 +1618,7 @@ async def _handle_tool_call(session, tool_call, ws: _WebSocket, dynamic_tools: D
 
         # Relay dashboard ID to frontend
         result_str = str(result)
-        if name == "generate_dashboard" and "[dashboard_id:" in result_str:
+        if name in ("generate_dashboard", "build_and_save_dashboard") and "[dashboard_id:" in result_str:
             match = re.search(r"\[dashboard_id:([^\]]+)\](.*)", result_str)
             if match:
                 try:

@@ -51,6 +51,11 @@ export default function AuthenticatedLayout({
     return <div className="min-h-screen bg-slate-50">{children}</div>;
   }
 
+  // No sidebar/topbar for standalone dashboard view
+  if (pathname.startsWith("/admin/dashboard/")) {
+    return <>{children}</>;
+  }
+
   if (role === "admin") {
     return <AdminSidebar>{children}</AdminSidebar>;
   }

@@ -54,3 +54,14 @@ bun.lockb
 agent/venv/
 agent/__pycache__/
 agent/.venv/
+# Added by code-review-graph
+.code-review-graph/
+
+
+.claude/
+
+Agent.md
+mcp.json
+.opencode.json
+CLAUDE.md
+settings.local.json

@@ -5,8 +5,16 @@ export const AdminAIBotStyles = `
 
   /* ── Keyframes ── */
   @keyframes fabPulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.18), 0 8px 32px rgba(0,0,0,0.5); }
-    60%      { box-shadow: 0 0 0 14px rgba(255,255,255,0), 0 8px 32px rgba(0,0,0,0.5); }
+    0%,100% { box-shadow: 0 0 0 0 rgba(6,182,212,0.45), 0 6px 24px rgba(99,102,241,0.4); }
+    60%      { box-shadow: 0 0 0 18px rgba(6,182,212,0), 0 6px 24px rgba(99,102,241,0.4); }
+  }
+  @keyframes fabFloat {
+    0%,100% { transform: translateY(0px) scale(1); }
+    50%     { transform: translateY(-5px) scale(1.03); }
+  }
+  @keyframes fabGradient {
+    0%,100% { background-position: 0% 50%; }
+    50%     { background-position: 100% 50%; }
   }
   @keyframes fabSpin {
     from { transform: rotate(0deg); }

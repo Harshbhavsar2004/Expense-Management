@@ -14,12 +14,26 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data, error } = await supabase
+    // Check if user is admin (admins can view any application's expenses)
+    const { data: profile } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const isAdmin = profile?.role === "admin";
+
+    let query = supabase
       .from("expenses")
       .select("*, receipts(*)")
       .eq("application_id", applicationId)
-      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
+
+    if (!isAdmin) {
+      query = query.eq("user_id", user.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error(`[API] Error fetching expenses for ${applicationId}:`, error);

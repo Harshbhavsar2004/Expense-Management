@@ -1,26 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
   LineChart, Line,
 } from "recharts";
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, BarChart2, SlidersHorizontal } from "lucide-react";
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, BarChart2, SlidersHorizontal, Sun, Moon } from "lucide-react";
 import type { DashboardSpec, DashboardChart, DashboardTableRow } from "@/types";
 
 interface Props { spec: DashboardSpec; hideHeader?: boolean; }
 
-/* ─── Design tokens (B&W / Zoho Analytics style) ──────────────────────── */
-const T = {
-  bg:           "#0f1115",      // Dark charcoal card bg
-  bgPage:       "#050608",      // Near black page bg
-  border:       "#1e2229",      // Subtle dark border
-  borderStrong: "#333a45",      // Visible border
-  text:         "#f3f4f6",      // Off-white text
-  textSub:      "#9ca3af",      // Gray text
-  textMuted:    "#6b7280",      // Muted gray
-  accent:       "#6366f1",      // Indigo accent
+/* ─── Design token sets ──────────────────────────────────────────────── */
+const DARK_T = {
+  bg:           "#0f1115",
+  bgPage:       "#050608",
+  border:       "#1e2229",
+  borderStrong: "#333a45",
+  text:         "#f3f4f6",
+  textSub:      "#9ca3af",
+  textMuted:    "#6b7280",
+  accent:       "#6366f1",
   accentLight:  "#1e2030",
   accentBorder: "#3b4261",
   headerBg:     "#0f1115",
@@ -29,39 +29,69 @@ const T = {
   shadowCard:   "0 0 0 1px #1e2229, 0 4px 20px rgba(0,0,0,0.5)",
 };
 
+const LIGHT_T = {
+  bg:           "#ffffff",
+  bgPage:       "#f1f5f9",
+  border:       "#e2e8f0",
+  borderStrong: "#cbd5e1",
+  text:         "#0f172a",
+  textSub:      "#475569",
+  textMuted:    "#94a3b8",
+  accent:       "#6366f1",
+  accentLight:  "#eef2ff",
+  accentBorder: "#c7d2fe",
+  headerBg:     "#ffffff",
+  rowHover:     "#f8fafc",
+  shadow:       "0 8px 32px rgba(0,0,0,0.08)",
+  shadowCard:   "0 0 0 1px #e2e8f0, 0 4px 16px rgba(0,0,0,0.06)",
+};
+
 const CHART_COLORS = [
-  "#6366f1", // Indigo
-  "#8b5cf6", // Violet
-  "#ec4899", // Pink
-  "#f43f5e", // Rose
-  "#f97316", // Orange
-  "#eab308", // Yellow
-  "#22c55e", // Green
-  "#06b6d4", // Cyan
-  "#3b82f6", // Blue
+  "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
+  "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6",
 ];
 
-/* ─── Shared tooltip ─────────────────────────────────────────────────── */
-const tooltipStyle = {
-  contentStyle: {
-    background: "#0a0a0a",
-    border: `1px solid ${T.borderStrong}`,
-    borderRadius: "10px",
-    fontSize: "12px",
-    color: T.text,
-    fontFamily: "'DM Sans', sans-serif",
-    boxShadow: "0 12px 48px rgba(0,0,0,0.8)",
-  },
-  itemStyle: { color: T.textSub },
-  labelStyle: { color: T.textMuted, marginBottom: "4px", fontWeight: 600, fontSize: "10px", textTransform: "uppercase" },
-  cursor: { fill: "rgba(255,255,255,0.03)" },
-};
+/* ─── Theme context ──────────────────────────────────────────────────── */
+type Tokens = typeof DARK_T;
+const ThemeCtx = createContext<Tokens>(DARK_T);
 
-const axisStyle = {
-  tick: { fill: T.textMuted, fontSize: 11, fontFamily: "'DM Sans', sans-serif" },
-  axisLine: { stroke: T.border },
-  tickLine: false as const,
-};
+/* ─── Token-dependent helpers (called with T at render time) ─────────── */
+function makeTooltipStyle(T: Tokens) {
+  return {
+    contentStyle: {
+      background: T.bg,
+      border: `1px solid ${T.borderStrong}`,
+      borderRadius: "10px",
+      fontSize: "12px",
+      color: T.text,
+      fontFamily: "'DM Sans', sans-serif",
+      boxShadow: T.shadow,
+    },
+    itemStyle: { color: T.textSub },
+    labelStyle: { color: T.textMuted, marginBottom: "4px", fontWeight: 600, fontSize: "10px", textTransform: "uppercase" as const },
+    cursor: { fill: T === DARK_T ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)" },
+  };
+}
+
+function makeAxisStyle(T: Tokens) {
+  return {
+    tick: { fill: T.textMuted, fontSize: 11, fontFamily: "'DM Sans', sans-serif" },
+    axisLine: { stroke: T.border },
+    tickLine: false as const,
+  };
+}
+
+function makeCardStyle(T: Tokens): React.CSSProperties {
+  return {
+    background: T.bg,
+    border: `1px solid ${T.border}`,
+    borderRadius: "10px",
+    padding: "20px 20px 16px",
+    flex: "1 1 360px",
+    minWidth: "320px",
+    boxShadow: T.shadowCard,
+  };
+}
 
 function fmt(v: number, unit?: string) {
   if (v >= 1_00_000) return `₹${(v / 1_00_000).toFixed(1)}L`;
@@ -69,17 +99,6 @@ function fmt(v: number, unit?: string) {
   if (unit === "₹" || unit?.startsWith("₹")) return `₹${v.toLocaleString("en-IN")}`;
   return String(v);
 }
-
-/* ─── Card shell ─────────────────────────────────────────────────────── */
-const cardStyle: React.CSSProperties = {
-  background: T.bg,
-  border: `1px solid ${T.border}`,
-  borderRadius: "10px",
-  padding: "20px 20px 16px",
-  flex: "1 1 360px",
-  minWidth: "320px",
-  boxShadow: T.shadowCard,
-};
 
 /* ─── Filter bar ─────────────────────────────────────────────────────── */
 function FilterBar({
@@ -89,6 +108,7 @@ function FilterBar({
   search: string; setSearch: (v: string) => void;
   sort: "none" | "asc" | "desc"; setSort: (v: "none" | "asc" | "desc") => void;
 }) {
+  const T = useContext(ThemeCtx);
   const nextSort = sort === "none" ? "desc" : sort === "desc" ? "asc" : "none";
   const SortIcon = sort === "desc" ? ArrowDown : sort === "asc" ? ArrowUp : ArrowUpDown;
   return (
@@ -132,6 +152,7 @@ function FilterBar({
 
 /* ─── Card Title ─────────────────────────────────────────────────────── */
 function CardTitle({ chart }: { chart: DashboardChart }) {
+  const T = useContext(ThemeCtx);
   return (
     <div style={{ marginBottom: "14px" }}>
       <p style={{
@@ -152,6 +173,7 @@ function CardTitle({ chart }: { chart: DashboardChart }) {
 }
 
 function Empty() {
+  const T = useContext(ThemeCtx);
   return (
     <p style={{ textAlign: "center", color: T.textMuted, fontSize: "12px", margin: "16px 0 0" }}>
       No data matches your filter
@@ -161,6 +183,7 @@ function Empty() {
 
 /* ─── Bar Chart ──────────────────────────────────────────────────────── */
 function BarChartCard({ chart }: { chart: DashboardChart }) {
+  const T = useContext(ThemeCtx);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"none" | "asc" | "desc">("none");
 
@@ -202,8 +225,10 @@ function BarChartCard({ chart }: { chart: DashboardChart }) {
     };
   }, [filtered, xKey, yKey]);
 
+  const tooltipStyle = makeTooltipStyle(T);
+  const axisStyle = makeAxisStyle(T);
   return (
-    <div style={cardStyle}>
+    <div style={makeCardStyle(T)}>
       <CardTitle chart={chart} />
       <FilterBar search={search} setSearch={setSearch} sort={sort} setSort={setSort} />
       <ResponsiveContainer width="100%" height={230}>
@@ -255,6 +280,7 @@ function CustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
 }
 
 function DonutChartCard({ chart }: { chart: DashboardChart }) {
+  const T = useContext(ThemeCtx);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"none" | "asc" | "desc">("none");
 
@@ -271,8 +297,9 @@ function DonutChartCard({ chart }: { chart: DashboardChart }) {
     return d;
   }, [chart.data, search, sort, categoryKey, valueKey]);
 
+  const tooltipStyle = makeTooltipStyle(T);
   return (
-    <div style={cardStyle}>
+    <div style={makeCardStyle(T)}>
       <CardTitle chart={chart} />
       <FilterBar search={search} setSearch={setSearch} sort={sort} setSort={setSort} />
       <ResponsiveContainer width="100%" height={230}>
@@ -312,6 +339,7 @@ function DonutChartCard({ chart }: { chart: DashboardChart }) {
 
 /* ─── Line Chart ─────────────────────────────────────────────────────── */
 function LineChartCard({ chart }: { chart: DashboardChart }) {
+  const T = useContext(ThemeCtx);
   const [search, setSearch] = useState("");
   const xKey = chart.x_key || "label";
   const yKey = chart.y_key || "value";
@@ -323,8 +351,10 @@ function LineChartCard({ chart }: { chart: DashboardChart }) {
     );
   }, [chart.data, search, xKey]);
 
+  const tooltipStyle = makeTooltipStyle(T);
+  const axisStyle = makeAxisStyle(T);
   return (
-    <div style={{ ...cardStyle, flex: "1 1 100%" }}>
+    <div style={{ ...makeCardStyle(T), flex: "1 1 100%" }}>
       <CardTitle chart={chart} />
       <div style={{ marginBottom: "14px" }}>
         <div style={{
@@ -363,6 +393,7 @@ function LineChartCard({ chart }: { chart: DashboardChart }) {
 
 /* ─── Table ──────────────────────────────────────────────────────────── */
 function TableCard({ chart }: { chart: any }) {
+  const T = useContext(ThemeCtx);
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -404,7 +435,7 @@ function TableCard({ chart }: { chart: any }) {
   };
 
   return (
-    <div style={{ ...cardStyle, flex: "1 1 100%" }}>
+    <div style={{ ...makeCardStyle(T), flex: "1 1 100%" }}>
       <CardTitle chart={chart} />
       <div style={{ marginBottom: "12px" }}>
         <div style={{
@@ -489,6 +520,7 @@ function TableCard({ chart }: { chart: any }) {
 
 /* ─── KPI Summary Strip ──────────────────────────────────────────────── */
 function SummaryStrip({ charts }: { charts: DashboardChart[] }) {
+  const T = useContext(ThemeCtx);
   const totalValue = useMemo(() =>
     charts.reduce((sum, c) => {
       if (c.type === "table") return sum;
@@ -543,6 +575,8 @@ function SummaryStrip({ charts }: { charts: DashboardChart[] }) {
 /* ─── Main DashboardRenderer ─────────────────────────────────────────── */
 export default function DashboardRenderer({ spec, hideHeader }: Props) {
   const [activeFilter, setActiveFilter] = useState<string>("all");
+  const [isDark, setIsDark] = useState(true);
+  const T = isDark ? DARK_T : LIGHT_T;
 
   const chartTypes = useMemo(() => {
     const types = new Set(spec.charts.map(c => c.type));
@@ -555,55 +589,70 @@ export default function DashboardRenderer({ spec, hideHeader }: Props) {
   );
 
   return (
-    /* Full-width page wrapper */
+    <ThemeCtx.Provider value={T}>
+    {/* Full-width page wrapper */}
     <div style={{
       background: T.bgPage,
       minHeight: "100vh",
       width: "100%",
       fontFamily: "'DM Sans', sans-serif",
+      transition: "background 0.2s",
     }}>
-      {/* Top header bar — Zoho-style */}
-      {!hideHeader && (
-        <div style={{
-          background: T.bg,
-          borderBottom: `1px solid ${T.border}`,
-          padding: "0 28px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          height: "52px",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{
-              width: "28px", height: "28px", borderRadius: "8px",
-              background: T.accent,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: `0 0 12px ${T.accent}44`,
-            }}>
-              <BarChart2 size={14} color="white" />
-            </div>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: T.text, letterSpacing: "-0.2px" }}>
-              {spec.title}
-            </span>
+      {/* Top header bar — Zoho-style (shown only on standalone page) */}
+      {!hideHeader && <div style={{
+        background: T.bg,
+        borderBottom: `1px solid ${T.border}`,
+        padding: "0 28px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        height: "52px",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+        boxShadow: `0 1px 3px ${isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.06)"}`,
+        transition: "background 0.2s, border-color 0.2s",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{
+            width: "28px", height: "28px", borderRadius: "8px",
+            background: T.accent,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: `0 0 12px ${T.accent}44`,
+          }}>
+            <BarChart2 size={14} color="white" />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <button style={{
-              display: "flex", alignItems: "center", gap: "5px",
-              padding: "6px 12px", borderRadius: "6px",
-              background: "none", border: `1px solid ${T.border}`,
-              color: T.textSub, cursor: "pointer", fontSize: "12px",
-              fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
-            }}>
-              <SlidersHorizontal size={12} />
-              Filters
-            </button>
-          </div>
+          <span style={{ fontSize: "14px", fontWeight: 700, color: T.text, letterSpacing: "-0.2px" }}>
+            {spec.title}
+          </span>
         </div>
-      )}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {/* Theme toggle */}
+          <button
+            onClick={() => setIsDark(d => !d)}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "32px", height: "32px", borderRadius: "8px",
+              background: T.accentLight, border: `1px solid ${T.accentBorder}`,
+              color: T.accent, cursor: "pointer",
+              transition: "all 0.18s",
+            }}
+          >
+            {isDark ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+          <button style={{
+            display: "flex", alignItems: "center", gap: "5px",
+            padding: "6px 12px", borderRadius: "6px",
+            background: "none", border: `1px solid ${T.border}`,
+            color: T.textSub, cursor: "pointer", fontSize: "12px",
+            fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
+          }}>
+            <SlidersHorizontal size={12} />
+            Filters
+          </button>
+        </div>
+      </div>}
 
       {/* Content area — full width with padding */}
       <div style={{ padding: "24px 28px 40px" }}>
@@ -666,5 +715,6 @@ export default function DashboardRenderer({ spec, hideHeader }: Props) {
         </p>
       </div>
     </div>
+    </ThemeCtx.Provider>
   );
 }

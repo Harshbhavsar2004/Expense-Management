@@ -13,6 +13,20 @@ import MentionDropdown from "./MentionDropdown";
 import ChatInput from "./ChatInput";
 import VoiceAgentPanel from "./VoiceAgentPanel";
 
+function formatVoiceText(text: string): string {
+  if (!text?.trim()) return text;
+  let t = text.trim();
+  // Add paragraph breaks after sentence-ending punctuation before a capital letter
+  t = t.replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2');
+  // Break before numbered list items mid-sentence
+  t = t.replace(/\.\s*(\d+)[.)]\s+/g, '.\n\n$1. ');
+  // Break before common transition words
+  t = t.replace(/([.!?])\s+(However|Additionally|Moreover|Furthermore|In summary|To summarize|Overall|In conclusion|Firstly|Secondly|Thirdly|Finally|Also|Next)\b/g, '$1\n\n$2');
+  // Ensure lists starting with dash/bullet get line breaks
+  t = t.replace(/([^\n])\s+-\s+([A-Za-z])/g, '$1\n- $2');
+  return t;
+}
+
 export default function AdminAIBot() {
   const [isOpen, setIsOpen]           = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -250,8 +264,19 @@ export default function AdminAIBot() {
   }) => {
     const activeId = currentIdRef.current;
 
-    // Handle turn_complete (is_final with empty content) — just reset ref, don't create a message
+    // Handle turn_complete (is_final with empty content) — format accumulated text then reset ref
     if (msg.is_final && !msg.content?.trim()) {
+      const lastMsgId = lastVoiceMsgRef.current?.id;
+      if (lastMsgId) {
+        setSessions(prev => prev.map(s =>
+          s.id !== activeId ? s : {
+            ...s,
+            messages: s.messages.map(m =>
+              m.id === lastMsgId ? { ...m, content: formatVoiceText(m.content) } : m
+            ),
+          }
+        ));
+      }
       lastVoiceMsgRef.current = null;
       return;
     }
@@ -314,7 +339,13 @@ export default function AdminAIBot() {
           if (m.id === lastMsg.id) {
             return {
               ...m,
-              content: msg.is_chunk ? (m.content + displayContent) : (displayContent || m.content),
+              content: msg.is_chunk
+                ? (m.content + (
+                    m.content && !m.content.endsWith(" ") && displayContent && !displayContent.startsWith(" ")
+                      ? " "
+                      : ""
+                  ) + displayContent)
+                : (displayContent || m.content),
               timestamp: new Date().toISOString(),
             };
           }
@@ -531,23 +562,26 @@ export default function AdminAIBot() {
         onMouseLeave={() => setFabHover(false)}
         style={{
           position: "fixed", bottom: "28px", right: "28px",
-          width: "56px", height: "56px", borderRadius: "50%",
+          width: "60px", height: "60px", borderRadius: "50%",
           background: fabHover
-            ? "linear-gradient(135deg,#7C3AED,#6D28D9)"
-            : "linear-gradient(135deg,#8B5CF6,#7C3AED)",
+            ? "linear-gradient(135deg,#0284C7,#6366F1,#8B5CF6)"
+            : "linear-gradient(135deg,#0EA5E9,#6366F1,#8B5CF6)",
+          backgroundSize: "200% 200%",
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", zIndex: 1000,
-          border: "1px solid rgba(255,255,255,0.2)",
-          animation: fabHover ? "none" : "fabPulse 3s ease-in-out infinite",
-          transform: fabHover ? "scale(1.1) translateY(-2px)" : "scale(1)",
-          transition: "transform 0.25s cubic-bezier(0.34,1.56,0.64,1), background 0.2s, border-color 0.2s",
-          boxShadow: fabHover ? "0 12px 40px rgba(139,92,246,0.5)" : "0 8px 24px rgba(139,92,246,0.3)",
-          backdropFilter: "blur(4px)",
+          border: "2px solid rgba(255,255,255,0.25)",
+          animation: fabHover ? "fabGradient 3s ease infinite" : "fabPulse 2.5s ease-in-out infinite, fabFloat 6s ease-in-out infinite, fabGradient 4s ease infinite",
+          transform: fabHover ? "scale(1.12) translateY(-3px)" : "scale(1)",
+          transition: "transform 0.3s cubic-bezier(0.34,1.56,0.64,1), border-color 0.2s",
+          boxShadow: fabHover
+            ? "0 14px 44px rgba(6,182,212,0.5), 0 4px 12px rgba(99,102,241,0.4)"
+            : "0 6px 24px rgba(6,182,212,0.3), 0 2px 8px rgba(99,102,241,0.25)",
+          backdropFilter: "blur(8px)",
         }}
       >
         <Sparkles
-          size={22} color="white"
-          style={{ transition: "transform 0.35s", transform: fabHover ? "rotate(18deg) scale(1.1)" : "rotate(0)", opacity: 0.9 }}
+          size={24} color="white"
+          style={{ transition: "transform 0.35s", transform: fabHover ? "rotate(20deg) scale(1.15)" : "rotate(0)", opacity: 0.95, filter: "drop-shadow(0 0 6px rgba(255,255,255,0.4))" }}
         />
         {sessions.length > 0 && (
           <div className="fab-counter" style={{
@@ -783,7 +817,7 @@ export default function AdminAIBot() {
                   <X size={13} /> Close
                 </button>
               </div>
-              <DashboardRenderer spec={dashboardSpec} />
+              <DashboardRenderer spec={dashboardSpec} hideHeader={true} />
             </div>
           </div>
         )}
