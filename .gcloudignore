@@ -1,0 +1,19 @@
+# Use .gitignore rules as a base
+.gcloudignore
+.git
+.gitignore
+
+# Exclude the Next.js frontend — Cloud Build only needs agent/
+src/
+public/
+node_modules/
+.next/
+*.md
+*.json
+!agent/pyproject.toml
+!agent/uv.lock
+
+# Exclude local env files
+.env
+.env.local
+agent/.env

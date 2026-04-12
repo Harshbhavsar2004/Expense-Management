@@ -1,0 +1,41 @@
+steps:
+  # Build the Docker image from the agent/ subdirectory
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '$_IMAGE_NAME:$COMMIT_SHA'
+      - '-t'
+      - '$_IMAGE_NAME:latest'
+      - './agent'   # build context = agent/ folder
+
+  # Push both tags
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_IMAGE_NAME:$COMMIT_SHA']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_IMAGE_NAME:latest']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '$_SERVICE_NAME'
+      - '--image=$_IMAGE_NAME:$COMMIT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--allow-unauthenticated'   # remove if you want auth required
+
+substitutions:
+  _IMAGE_NAME: gcr.io/$PROJECT_ID/expense-agent
+  _SERVICE_NAME: expense-agent
+  _REGION: asia-south1   # change to your preferred region
+
+images:
+  - '$_IMAGE_NAME:$COMMIT_SHA'
+  - '$_IMAGE_NAME:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
