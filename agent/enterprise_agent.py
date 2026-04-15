@@ -801,38 +801,26 @@ STEP 1 — Find or Create Customer:
   e. Extract contact_id from response
   f. If ambiguous (multiple matches) → ask user: "Multiple customers found. Which one?"
 
-STEP 2 — Find or Create Line Items:
-  a. User specifies item(s) (e.g., "Reimbursable Amount", "Consulting Fee")
-  b. For each item: search ZOHO_INVOICE_LIST_ITEMS to find existing item
-  c. If found → use item_id and rate from result
-  d. If NOT found → Call ZOHO_INVOICE_CREATE_ITEM(item_name, rate, description_optional)
-  e. Build line_items array: [{{ "item_id": "...", "quantity": 1, "rate": "..." }}, ...]
+STEP 2 — Build Line Items (NEVER block on this step):
+  PREFERRED: Use description-based line items — no item_id required:
+    line_items = [{{ "description": "Travel Expenses", "rate": 900, "quantity": 1 }}]
 
-STEP 3 — Create Invoice with All Required Parameters:
-  REQUIRED fields for ZOHO_INVOICE_CREATE_INVOICE:
+  Only use item_id if the user specifically references a cataloged product/service.
+  If user says "include expenses from application X":
+    → Fetch the expense amount using get_expenses_detail(application_id=X)
+    → Use claimed_amount_numeric as the rate
+    → Description = expense type (e.g. "Travel Expenses - EXP-E2YL")
+  If user just says "₹900 invoice" → line_items = [{{ "description": "Services Rendered", "rate": 900, "quantity": 1 }}]
+
+  DO NOT call ZOHO_INVOICE_LIST_ITEMS unless the user explicitly asks to reuse a cataloged item.
+
+STEP 3 — Create Invoice:
+  Call ZOHO_INVOICE_CREATE_INVOICE with:
     - customer_id: from Step 1
-    - date: invoice date in yyyy-mm-dd format (use today if not specified)
-    - line_items: array with at least 1 item object from Step 2
-    - organization_id: Zoho organization ID (get from admin config)
-  
-  OPTIONAL fields (infer from context/user/defaults):
-    - invoice_number: auto-generated if not provided
-    - due_date: yyyy-mm-dd format (e.g., 30 days from now)
-    - payment_terms: days (15, 30, 60, etc.)
-    - discount: percentage or amount (%/rupees)
-    - adjustment: additional fee/discount
-    - adjustment_description: reason for adjustment
-    - shipping_charge: if applicable
-    - notes: payment instructions
-    - reference_number: if user mentions one
-    - terms: T&C of invoice
-    - salesperson_name: if relevant
-    - template_id: for PDF layout
-    - project_id: if linked to project
-    - custom_fields: if org uses them
-
-  c. Call ZOHO_INVOICE_CREATE_INVOICE(customer_id, date, line_items, organization_id, ...optional)
-  d. RESPONSE: "✅ Invoice #[invoice_number] created for [Customer Name] — ₹[Total]. Due: [due_date]. ID: [invoice_id]"
+    - date: today in yyyy-mm-dd format
+    - line_items: from Step 2 (description + rate + quantity — item_id is optional)
+    - organization_id: {zoho_org_id}
+  RESPONSE: "✅ Invoice #[invoice_number] created for [Customer Name] — ₹[Total]. Due: [due_date]. ID: [invoice_id]"
 
 ⚠️ CRITICAL MANDATE — THIS IS NOT A SUGGESTION:
   When user says "Create invoice for QWERTY" or any customer name → ACT IMMEDIATELY

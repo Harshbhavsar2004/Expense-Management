@@ -89,11 +89,11 @@ class SanitizedTool(BaseTool):
 
         # Force the correct Zoho organization ID — the LLM often hallucinates this.
         # This is the authoritative injection point for all Composio Zoho tool calls.
+        # Falls back to the hardcoded value so Cloud Run deployments without the env var still work.
         if self.name.startswith("ZOHO_INVOICE_"):
-            zoho_org = os.getenv("ZOHO_ORGANIZATION_ID", "")
-            if zoho_org:
-                args["organization_id"] = zoho_org
-                print(f"[SanitizedTool] Forced organization_id={zoho_org} for {self.name}")
+            zoho_org = os.getenv("ZOHO_ORGANIZATION_ID") or "60069826568"
+            args["organization_id"] = zoho_org
+            print(f"[SanitizedTool] Forced organization_id={zoho_org} for {self.name}")
 
         print(f"[SanitizedTool] {self.name} run_async CALLED with args={args}")
         
@@ -155,7 +155,8 @@ def _load_composio_tools(admin_user_id: str) -> List[SanitizedTool]:
             "GOOGLESHEETS_CREATE_GOOGLE_SHEET", "GOOGLESHEETS_SHEET_FROM_JSON",
             "GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_LIST_EVENTS",
             "ZOHO_INVOICE_CREATE_INVOICE", "ZOHO_INVOICE_GET_INVOICE", "ZOHO_INVOICE_UPDATE_INVOICE",
-            "ZOHO_INVOICE_LIST_INVOICES", "ZOHO_INVOICE_LIST_CONTACTS", "ZOHO_INVOICE_CREATE_CONTACT", "ZOHO_INVOICE_CREATE_ITEM"
+            "ZOHO_INVOICE_LIST_INVOICES", "ZOHO_INVOICE_LIST_CONTACTS", "ZOHO_INVOICE_CREATE_CONTACT",
+            "ZOHO_INVOICE_CREATE_ITEM", "ZOHO_INVOICE_LIST_ITEMS"
         ]
 
         active_prefixes = tuple(tk.upper() + "_" for tk in active_toolkits)
