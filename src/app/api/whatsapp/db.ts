@@ -367,3 +367,28 @@ export async function getUserByPhone(phone: string, supabaseClient?: any) {
     
   return suffixData || null;
 }
+
+/**
+ * Links a Zoho Cliq userId to a user profile matching the provided email.
+ */
+export async function upsertCliqId(
+  cliqUserId: string,
+  email: string,
+  supabaseClient?: any
+): Promise<void> {
+  const client = supabaseClient || supabase;
+  try {
+    const { error } = await client
+      .from("users")
+      .update({ cliq_user_id: cliqUserId })
+      .eq("email", email);
+
+    if (error) {
+      console.error("[DB] upsertCliqId error:", error.message);
+    } else {
+      console.log(`[DB] Successfully linked Cliq ID ${cliqUserId} to ${email}`);
+    }
+  } catch (err) {
+    console.error("[DB] Unexpected error in upsertCliqId:", err);
+  }
+}

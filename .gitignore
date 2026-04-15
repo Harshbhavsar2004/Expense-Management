@@ -1,6 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -10,58 +8,65 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
+# Python virtual environments
+agent/venv/
+agent/.venv/
+agent/__pycache__/
+agent/.pytest_cache/
+*.egg-info/
+dist/
+build/
 
-# next.js
+# Next.js / Node build outputs
 /.next/
 /out/
+/.vercel/
+.tsbuildinfo
 
-# production
-/build
+# Testing coverage
+/coverage
 
-# misc
-.DS_Store
-*.pem
+# Environment variables (secrets and local config)
+.env
+.env.local
+.env.*.local
 
-# debug
+# Log files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files (can opt-in for committing if needed)
-.env*
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 
-# vercel
-.vercel
+# IDE and editor configs (local to each developer)
+.vscode/settings.json
+.vscode/extensions.json
+.idea/
+.code-review-graph/
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-.mastra/
-
-# lock files
+# Lock files (use with caution - typically excluded unless this is a library)
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
 bun.lockb
 
+# Temporary and local files
+*.pem
 *.txt
-
-# python
-agent/venv/
-agent/__pycache__/
-agent/.venv/
-# Added by code-review-graph
-.code-review-graph/
-
-
 .claude/
+.mastra/
 
+# Local/personal configuration files
 Agent.md
 mcp.json
 .opencode.json
-CLAUDE.md
 settings.local.json
+CLAUDE.md
