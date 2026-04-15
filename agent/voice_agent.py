@@ -1257,7 +1257,7 @@ GMAIL_SEND_EMAIL Parameters:
   - body: email content (text or HTML with is_html=True)
   - cc, bcc: optional recipients
   - is_html: set to True if body contains HTML tags
-  - attachment: optional { name, mimetype, s3key } (mimetype must contain '/')
+  - attachment: optional {{ name, mimetype, s3key }} (mimetype must contain '/')
   
 EMAIL BEST PRACTICES:
   - Always use professional HTML <table> (inline CSS) for data summaries
@@ -1305,7 +1305,7 @@ STEP 1 — Search for customer (no asking):
 STEP 2 — Get/create line items (infer if needed):
   → If user said "Reimbursable Amount ₹900": search & create item
   → If user didn't specify: ask 1 question OR use sensible default
-  → Build line_items array: [{ "item_id": "...", "quantity": 1, "rate": ... }]
+  → Build line_items array: [{{ "item_id": "...", "quantity": 1, "rate": ... }}]
 
 STEP 3 — Create invoice:
   → Call ZOHO_INVOICE_CREATE_INVOICE(customer_id, date, line_items, organization_id from env, ...)
