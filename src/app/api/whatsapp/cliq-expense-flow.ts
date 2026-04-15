@@ -508,7 +508,10 @@ export async function sendCliqAppList(
         [
             {
                 title: "Recent Applications",
-                rows: apps.slice(0, 10).map((id) => ({ id, title: id })),
+                rows: apps.slice(0, 10).map(({ applicationId, clientName }) => ({
+                    id: applicationId,
+                    title: clientName ? `${clientName} · ${applicationId}` : applicationId,
+                })),
             },
         ]
     );

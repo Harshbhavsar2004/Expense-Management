@@ -310,41 +310,45 @@ export async function getExpensesInDateRange(
   return (data ?? []) as ExpenseRow[];
 }
 
+export type ApplicationSummary = { applicationId: string; clientName: string };
+
 /**
- * Fetch distinct Application IDs for a user from both applications and expenses tables.
+ * Fetch distinct Applications (ID + client name) for a user from both applications and expenses tables.
  */
-export async function getUserApplications(phone: string, userId?: string, supabaseClient?: any): Promise<string[]> {
+export async function getUserApplications(phone: string, userId?: string, supabaseClient?: any): Promise<ApplicationSummary[]> {
   const client = supabaseClient || supabase;
-  
+
   // Query applications table
   let appQuery = client
     .from("applications")
-    .select("application_id")
+    .select("application_id, client_name")
     .eq("user_phone", phone);
-  
+
   if (userId) appQuery = appQuery.eq("user_id", userId);
-  
+
   const { data: appData, error: appError } = await appQuery;
 
   // Query expenses table (fallback/compatibility)
   let expQuery = client
     .from("expenses")
-    .select("application_id")
+    .select("application_id, client_name")
     .eq("user_phone", phone)
     .not("application_id", "is", null);
 
   if (userId) expQuery = expQuery.eq("user_id", userId);
-  
+
   const { data: expData, error: expError } = await expQuery;
 
   if (appError) console.error("[DB] getUserApplications apps error:", appError);
   if (expError) console.error("[DB] getUserApplications exps error:", expError);
 
-  const ids = new Set<string>();
-  if (appData) appData.forEach((d: any) => ids.add(d.application_id));
-  if (expData) expData.forEach((d: any) => ids.add(d.application_id));
+  const seen = new Map<string, string>(); // applicationId → clientName
+  if (appData) appData.forEach((d: any) => { if (d.application_id) seen.set(d.application_id, d.client_name || ""); });
+  if (expData) expData.forEach((d: any) => { if (d.application_id && !seen.has(d.application_id)) seen.set(d.application_id, d.client_name || ""); });
 
-  return Array.from(ids).filter(Boolean).sort();
+  return Array.from(seen.entries())
+    .map(([applicationId, clientName]) => ({ applicationId, clientName }))
+    .sort((a, b) => a.applicationId.localeCompare(b.applicationId));
 }
 
 /**

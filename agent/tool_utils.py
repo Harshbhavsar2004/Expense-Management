@@ -53,6 +53,15 @@ class SanitizedTool(BaseTool):
             if "required" in schema:
                 schema["required"] = [r for r in schema["required"] if r in essentials]
 
+        # ZOHO_INVOICE tools: strip optional fields that cause API validation errors
+        # when the LLM passes guessed/invalid values (website URL format, currency codes, etc.)
+        if self.name.startswith("ZOHO_INVOICE_"):
+            noisy = {"website", "currency_code", "payment_terms", "payment_terms_label", "notes"}
+            props = schema.get("properties", {})
+            schema["properties"] = {k: v for k, v in props.items() if k not in noisy}
+            if "required" in schema:
+                schema["required"] = [r for r in schema["required"] if r not in noisy]
+
         if "any_of" in schema:
             options = schema.pop("any_of")
             if options and isinstance(options, list):
@@ -138,7 +147,7 @@ def _load_composio_tools(admin_user_id: str) -> List[SanitizedTool]:
             "GOOGLESHEETS_CREATE_GOOGLE_SHEET", "GOOGLESHEETS_SHEET_FROM_JSON",
             "GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_LIST_EVENTS",
             "ZOHO_INVOICE_CREATE_INVOICE", "ZOHO_INVOICE_GET_INVOICE", "ZOHO_INVOICE_UPDATE_INVOICE",
-            "ZOHO_INVOICE_LIST_INVOICES", "ZOHO_INVOICE_CREATE_CONTACT", "ZOHO_INVOICE_CREATE_ITEM"
+            "ZOHO_INVOICE_LIST_INVOICES", "ZOHO_INVOICE_LIST_CONTACTS", "ZOHO_INVOICE_CREATE_CONTACT", "ZOHO_INVOICE_CREATE_ITEM"
         ]
 
         active_prefixes = tuple(tk.upper() + "_" for tk in active_toolkits)

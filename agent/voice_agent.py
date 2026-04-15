@@ -1291,15 +1291,14 @@ ZOHO INVOICE — PROACTIVE CREATION FLOW
 When user requests "Create invoice for [customer name]":
 
 ⚠️  CRITICAL: DO NOT ask for customer_id, line items, or organization_id
-Organization ID is set in environment (ZOHO_ORGANIZATION_ID) — read it, don't ask!
+Organization ID is already known: {zoho_org_id} — use it directly, never ask!
 
 STEP 1 — Search for customer (no asking):
-  → Get organization_id from environment variable
   → Call ZOHO_INVOICE_LIST_CONTACTS with:
-     * organization_id: (from env)
+     * organization_id: {zoho_org_id}
      * contact_name_contains: "QWERTY"
   → If found (1 match) → use customer_id
-  → If NOT found → ZOHO_INVOICE_CREATE_CONTACT(name="QWERTY", organization_id=...)
+  → If NOT found → ZOHO_INVOICE_CREATE_CONTACT(name="QWERTY", organization_id="{zoho_org_id}")
   → If ambiguous (2+ matches) → ask: "Which one?"
 
 STEP 2 — Get/create line items (infer if needed):
@@ -1308,15 +1307,16 @@ STEP 2 — Get/create line items (infer if needed):
   → Build line_items array: [{{ "item_id": "...", "quantity": 1, "rate": ... }}]
 
 STEP 3 — Create invoice:
-  → Call ZOHO_INVOICE_CREATE_INVOICE(customer_id, date, line_items, organization_id from env, ...)
+  → Call ZOHO_INVOICE_CREATE_INVOICE(customer_id, date, line_items, organization_id="{zoho_org_id}", ...)
+  → DO NOT pass website, currency_code, or any field you are not sure about — omit optional fields
   → Speak: "Invoice #[number] created for [Customer] — ₹[Amount]. Due: [date]. ID: [id]"
 
 FORBIDDEN RESPONSES:
   ❌ "What is the customer ID?"
-  ❌ "I need the organization ID"  (it's in env, use it!)
+  ❌ "I need the organization ID"  (it is {zoho_org_id})
   ❌ "Can you provide line items?"
-  
-MANDATORY: Read organization_id from environment. Use it in all ZOHO calls. Never ask for it.
+
+MANDATORY: Always use organization_id={zoho_org_id} in all ZOHO calls. Never pass website or currency_code unless the user explicitly provides them.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 GOOGLE SEARCH & GROUNDING
@@ -1385,6 +1385,7 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
         role=role,
         organization=org or "Fristine Infotech",
         team=team or "Executive",
+        zoho_org_id=os.getenv("ZOHO_ORGANIZATION_ID", ""),
     )
 
     # ── Tool compilation ─────────────────────────────────────────────────────
@@ -1460,6 +1461,11 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
                 try:
                     while not _stop.is_set():
                         message = await ws.receive()
+
+                        # Starlette returns a dict instead of raising on clean disconnect
+                        if message.get("type") == "websocket.disconnect":
+                            logger.info(f"[WS] Client sent disconnect frame: {session_id}")
+                            break
 
                         if "bytes" in message:
                             _audio_chunk_count += 1

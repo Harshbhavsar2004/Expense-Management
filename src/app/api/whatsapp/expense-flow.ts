@@ -481,7 +481,10 @@ export async function sendAppList(to: string, step: "awaiting_app_selection_add"
     "Select App",
     [{
       title: "Recent Applications",
-      rows: apps.slice(0, 10).map(id => ({ id, title: id }))
+      rows: apps.slice(0, 10).map(({ applicationId, clientName }) => ({
+        id: applicationId,
+        title: clientName ? `${clientName} · ${applicationId}` : applicationId,
+      }))
     }]
   );
 
