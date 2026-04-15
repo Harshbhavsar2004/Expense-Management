@@ -52,18 +52,24 @@ export default function VoiceAgentPanel({ adminId, onVoiceMessage, onDashboard, 
   const recCtxRef = useRef<AudioContext | null>(null);
   const playCtxRef = useRef<AudioContext | null>(null);
   const nextPlayRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable ref to handleStart so onWsMessage (defined before handleStart) can call it
+  const handleStartRef = useRef<() => Promise<void>>(async () => {});
   const bars = Array.from({ length: 5 });
 
-  useEffect(() => { return () => cleanup(); }, []);
+  useEffect(() => { return () => cleanup(false); }, []);
 
   useEffect(() => {
     if (adminId) localStorage.setItem("expify_admin_user_id", adminId);
   }, [adminId]);
 
-  const cleanup = useCallback(() => {
-    // Stop mic
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
+  const cleanup = useCallback((keepStream = false) => {
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    // Stop mic (unless we're keeping the stream for a reconnect)
+    if (!keepStream) {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
     // Close recorder AudioContext
     if (recCtxRef.current?.state !== "closed") recCtxRef.current?.close().catch(() => {});
     recCtxRef.current = null;
@@ -148,6 +154,14 @@ export default function VoiceAgentPanel({ adminId, onVoiceMessage, onDashboard, 
           if (msg.id) onVoiceDashboardId?.(msg.id, msg.title || "Dashboard");
           break;
 
+        case "session_ended":
+          // Gemini Live session timed out — reconnect automatically
+          console.warn("[Voice WS] session_ended received, reconnecting in 1.5s...");
+          cleanup(true /* keepStream */);
+          setSessionState("connecting");
+          reconnectTimerRef.current = setTimeout(() => { handleStartRef.current(); }, 1500);
+          break;
+
         case "error":
           console.error("[Voice WS]", msg.message);
           break;
@@ -212,9 +226,11 @@ export default function VoiceAgentPanel({ adminId, onVoiceMessage, onDashboard, 
       ws.onmessage = onWsMessage;
       ws.onclose = (ev) => {
         console.log("[Voice] WebSocket closed:", ev.code, ev.reason);
-        setSessionState("idle");
-        setIsMuted(false);
-        cleanup();
+        // If a reconnect timer is pending (session_ended flow), don't reset to idle
+        if (!reconnectTimerRef.current) {
+          setSessionState("idle");
+          setIsMuted(false);
+        }
       };
       ws.onerror = (ev) => {
         console.error("[Voice] WebSocket error:", ev);
@@ -284,7 +300,10 @@ export default function VoiceAgentPanel({ adminId, onVoiceMessage, onDashboard, 
     }
   };
 
-  const handleEnd = () => { cleanup(); setSessionState("idle"); setIsMuted(false); };
+  // Keep ref in sync so session_ended handler always calls the latest handleStart
+  handleStartRef.current = handleStart;
+
+  const handleEnd = () => { cleanup(false); setSessionState("idle"); setIsMuted(false); };
   const handleMute = () => {
     if (!streamRef.current) return;
     const next = !isMuted;

@@ -8,7 +8,7 @@ import re
 import traceback
 import urllib.parse
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -308,12 +308,18 @@ async def get_policies(user_id=None) -> str:
 
 
 async def set_policy_override(
-    user_id, set_by, valid_from, valid_until, reason,
+    user_id, set_by, valid_until, reason,
+    valid_from=None,
     meal_tier1=None, meal_tier2=None, meal_tier3=None,
     travel_limit=None, hotel_limit=None,
 ) -> str:
     """Set a temporary policy override for a user. Admin only."""
     try:
+        # Default valid_from to now (IST) if not supplied or empty
+        if not valid_from:
+            _ist = timezone(timedelta(hours=5, minutes=30))
+            valid_from = datetime.now(_ist).strftime("%Y-%m-%dT00:00:00+05:30")
+
         payload: Dict[str, Any] = {
             "p_user_id": user_id,
             "p_set_by": set_by,
@@ -1000,7 +1006,7 @@ GEMINI_TOOLS = [
                         "travel_limit": types.Schema(type=types.Type.NUMBER),
                         "hotel_limit":  types.Schema(type=types.Type.NUMBER),
                     },
-                    required=["user_id", "set_by", "valid_from", "valid_until", "reason"],
+                    required=["user_id", "set_by", "valid_until", "reason"],
                 ),
             ),
             types.FunctionDeclaration(
@@ -1285,6 +1291,12 @@ POLICY UPDATE FLOW (ADMIN ONLY)
 
 Meal limits: 900 rupees Tier 1, 700 Tier 2, 450 Tier 3 per day.
 
+DATE RULES FOR set_policy_override:
+- Pass valid_from and valid_until as full ISO strings: "YYYY-MM-DDTHH:MM:SS+05:30"
+- "from today" or "starting now" → valid_from = "{today_iso}" (today's IST date at 00:00)
+- If the user does not specify valid_from, always default to today: "{today_iso}"
+- NEVER use just "YYYY-MM-DD" — always include the time and +05:30 offset.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ZOHO INVOICE — PROACTIVE CREATION FLOW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1379,8 +1391,10 @@ async def websocket_endpoint(ws: _WebSocket, session_id: str):
 
     logger.info(f"[WS] Connected session={session_id} user_id={user_id!r} role={role!r}")
 
+    _now_ist = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=5, minutes=30)))
     system_msg = SYSTEM_PROMPT.format(
-        date=datetime.now(timezone.utc).strftime("%B %Y"),
+        date=_now_ist.strftime("%A, %d %B %Y"),  # e.g. "Tuesday, 15 April 2026"
+        today_iso=_now_ist.strftime("%Y-%m-%dT00:00:00+05:30"),  # e.g. "2026-04-15T00:00:00+05:30"
         admin_id=user_id or "unknown",
         role=role,
         organization=org or "Fristine Infotech",
@@ -1657,6 +1671,14 @@ async def _handle_tool_call(session, tool_call, ws: _WebSocket, dynamic_tools: D
             })
         except Exception:
             pass
+
+        # Force correct organization_id for all Zoho Invoice tool calls —
+        # overrides whatever the LLM passed, since it often hallucinates a wrong ID.
+        if name.startswith("ZOHO_INVOICE_"):
+            zoho_org = os.getenv("ZOHO_ORGANIZATION_ID", "")
+            if zoho_org:
+                args["organization_id"] = zoho_org
+                logger.info(f"[Tool] Forced organization_id={zoho_org} for {name}")
 
         logger.info(f"[Tool] {name} args={args}")
 
