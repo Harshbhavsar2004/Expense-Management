@@ -585,6 +585,7 @@ def enterprise_before_model(
     # PydanticSerializationError: Unable to serialize unknown type: FunctionTool
     # Composio tools are added to LlmAgent(tools=[...]) in main.py instead.
     today = datetime.now(timezone.utc).strftime("%A, %d %B %Y %H:%M UTC")
+    zoho_org_id = os.getenv("ZOHO_ORGANIZATION_ID", "")
 
     system_prompt = f"""You are the Enterprise Data Intelligence Agent for Fristine Infotech.
 Today is {today}.
@@ -842,19 +843,18 @@ STEP 3 — Create Invoice with All Required Parameters:
   
   INSTEAD → Follow this sequence:
     1. Extract customer name ("QWERTY")
-    2. Get organization_id from environment (ZOHO_ORGANIZATION_ID env var — already set)
+    2. organization_id = {zoho_org_id} ← USE THIS EXACT VALUE. Do not guess or ask.
     3. Call ZOHO_INVOICE_LIST_CONTACTS with:
-         organization_id=<from env>
+         organization_id={zoho_org_id}
          contact_name_contains="QWERTY"
     4. If found (1 match) → use customer_id
-       If NOT found → ZOHO_INVOICE_CREATE_CONTACT(name="QWERTY", organization_id=<from env>)
+       If NOT found → ZOHO_INVOICE_CREATE_CONTACT(name="QWERTY", organization_id={zoho_org_id})
        If ambiguous (2+ matches) → ask: "Found [X] matches: [list]. Which?"
     5. For line items: infer from context, or ask 1 question, then PROCEED
-    6. Call ZOHO_INVOICE_CREATE_INVOICE with all data + organization_id from env
+    6. Call ZOHO_INVOICE_CREATE_INVOICE with all data + organization_id={zoho_org_id}
     7. Confirm: "✅ Invoice #[ID] created for [Customer] — ₹[Amount]. Due: [date]"
-  
-  CRITICAL: organization_id is NOT from user input. It's from environment (ZOHO_ORGANIZATION_ID).
-  You HAVE the tools. Use them. Do not default to asking for information.
+
+  CRITICAL: organization_id is ALWAYS {zoho_org_id}. Never use any other value.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DASHBOARDS — ZOHO ANALYTICS STYLE
@@ -882,6 +882,20 @@ PRIVACY RULES
     llm_request.config.system_instruction = original
 
     _debug("system prompt injected", prompt_length=len(system_prompt))
+    return None
+
+
+def enterprise_before_tool(
+    tool,
+    args: dict,
+    tool_context: ToolContext,
+):
+    """Force the correct Zoho organization_id on every Zoho Invoice tool call."""
+    if getattr(tool, "name", "").startswith("ZOHO_INVOICE_"):
+        org_id = os.getenv("ZOHO_ORGANIZATION_ID", "")
+        if org_id:
+            args["organization_id"] = org_id
+            _debug(f"before_tool: forced organization_id={org_id} for {tool.name}")
     return None
 
 
@@ -936,4 +950,5 @@ enterprise_agent = LlmAgent(
     before_agent_callback=enterprise_before_agent,
     before_model_callback=enterprise_before_model,
     after_model_callback=enterprise_after_model,
+    before_tool_callback=enterprise_before_tool,
 )

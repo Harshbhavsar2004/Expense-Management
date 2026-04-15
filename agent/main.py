@@ -75,6 +75,7 @@ def _build_enterprise_agent(admin_user_id: str) -> LlmAgent:
     """Build a fresh EnterpriseAgent with this admin's Composio tools."""
     from enterprise_agent import (
         enterprise_before_agent, enterprise_before_model, enterprise_after_model,
+        enterprise_before_tool,
         resolve_user, get_user_stats, compare_two_users,
         semantic_search_expenses, get_applications, get_policies,
         set_policy_override, clear_policy_override, get_duplicate_receipts,
@@ -118,6 +119,7 @@ def _build_enterprise_agent(admin_user_id: str) -> LlmAgent:
         before_agent_callback=enterprise_before_agent,
         before_model_callback=enterprise_before_model,
         after_model_callback=enterprise_after_model,
+        before_tool_callback=enterprise_before_tool,
     )
 
 
