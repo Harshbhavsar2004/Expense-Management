@@ -153,6 +153,73 @@ export async function saveApplicationToSupabase(app: ApplicationRecord, userId?:
   }
 }
 
+
+/**
+ * Fetch a single application record by ID.
+ * Fallback to the expenses table for legacy records.
+ */
+export async function getApplicationDetails(
+  applicationId: string,
+  phone: string,
+  userId?: string,
+  supabaseClient?: any
+): Promise<ApplicationRecord | null> {
+  const client = supabaseClient || supabase;
+  try {
+    let query = client
+      .from("applications")
+      .select("*")
+      .eq("application_id", applicationId)
+      .eq("user_phone", phone);
+
+    if (userId) query = query.eq("user_id", userId);
+
+    const { data, error } = await query.maybeSingle();
+
+    if (!error && data) {
+      return {
+        userPhone: data.user_phone,
+        applicationId: data.application_id,
+        clientName: data.client_name,
+        visitDuration: data.visit_duration,
+        city: data.city,
+        cityTier: data.city_tier,
+        participantCount: data.participant_count,
+        participantDetails: data.participant_details || [],
+      };
+    }
+
+    // Fallback search in expenses table
+    let expQuery = client
+      .from("expenses")
+      .select("application_id, client_name, visit_duration, city, city_tier, participant_count")
+      .eq("application_id", applicationId)
+      .eq("user_phone", phone);
+
+    if (userId) expQuery = expQuery.eq("user_id", userId);
+
+    const { data: expData, error: expError } = await expQuery.limit(1).maybeSingle();
+
+    if (!expError && expData) {
+      return {
+        userPhone: phone,
+        applicationId: expData.application_id,
+        clientName: expData.client_name || "Unknown",
+        visitDuration: expData.visit_duration || "Unknown",
+        city: expData.city || "Unknown",
+        cityTier: expData.city_tier || "Tier - III",
+        participantCount: expData.participant_count || 1,
+        participantDetails: [],
+      };
+    }
+
+    return null;
+  } catch (err) {
+    console.error("[DB] Unexpected error in getApplicationDetails:", err);
+    return null;
+  }
+}
+
 // ── Query types ───────────────────────────────────────────────────────────────
 export type ExpenseRow = {
   id: string;

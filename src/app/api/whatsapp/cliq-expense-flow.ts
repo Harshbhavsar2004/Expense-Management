@@ -8,7 +8,7 @@ import { getSession, setSession, clearSession } from "./session";
 import { sendText, sendCard, sendList, sendImageCard } from "./whatsapp";
 import { analyseReceipt, predictCategory } from "./vision";
 import { triggerAudit } from "./agent";
-import { getUserApplications, saveApplicationToSupabase } from "./db";
+import { getUserApplications, saveApplicationToSupabase, getApplicationDetails } from "./db";
 import { getCityTier } from "./city-tool";
 
 const LOGO_URL =
@@ -273,12 +273,25 @@ export async function handleCliqExpenseFlow(
         }
 
         case "awaiting_app_selection_add": {
-            session.applicationId = incomingText.trim().toUpperCase();
+            const appId = incomingText.trim().toUpperCase();
+            session.applicationId = appId;
+            
+            // Fetch application details to show client name
+            const app = await getApplicationDetails(appId, phone, session.userId, supabaseClient);
+            if (app) {
+                session.clientName = app.clientName;
+                session.visitDuration = app.visitDuration;
+                session.city = app.city;
+                session.cityTier = app.cityTier;
+            }
+
             session.step = "awaiting_receipt";
             await setSession(phone, session);
+            
+            const clientInfo = session.clientName ? ` (Client: ${session.clientName})` : "";
             await sendText(
                 phone,
-                `*App Selected: ${session.applicationId}*\n\n*Step 2: Upload Receipt*\n\nPlease upload the UPI screenshot or payment receipt.`
+                `*App Selected: ${session.applicationId}${clientInfo}*\n\n*Step 2: Upload Receipt*\n\nPlease upload the UPI screenshot or payment receipt.`
             );
             break;
         }
