@@ -738,12 +738,12 @@ COMPOSIO GMAIL TOOL RULES — READ CAREFULLY
    - is_html: set to True if body contains HTML tags
    - cc, bcc: optional carbon copy / blind copy lists
    - extra_recipients: additional 'To' recipients (use with recipient_email)
-   - attachment: optional file attachment { name, mimetype, s3key }
+   - attachment: optional file attachment {{ name, mimetype, s3key }}
    - from_email: optional (use configured alias if needed)
    - Never pass user_id as a parameter
 
 4. For ATTACHMENTS in GMAIL_SEND_EMAIL:
-   Structure: { "name": "filename.pdf", "mimetype": "application/pdf", "s3key": "s3-key-from-prior-action" }
+   Structure: {{ "name": "filename.pdf", "mimetype": "application/pdf", "s3key": "s3-key-from-prior-action" }}
    Important:
    - mimetype MUST contain '/' (e.g., application/pdf, text/csv, image/png)
    - s3key must be a valid S3 key from a prior upload or download
@@ -755,7 +755,7 @@ COMPOSIO GMAIL TOOL RULES — READ CAREFULLY
 
 CORRECT: GMAIL_FETCH_EMAILS(query="is:unread", max_results=5)
 CORRECT: GMAIL_SEND_EMAIL(recipient_email="user@example.com", subject="Update", body="See dashboard: [link]")
-CORRECT: GMAIL_SEND_EMAIL(recipient_email="user@example.com", subject="Report", body="<h1>Monthly Report</h1>", is_html=True, attachment={"name": "report.pdf", "mimetype": "application/pdf", "s3key": "dashboards/report-2025-04-15.pdf"})
+CORRECT: GMAIL_SEND_EMAIL(recipient_email="user@example.com", subject="Report", body="<h1>Monthly Report</h1>", is_html=True, attachment={{"name": "report.pdf", "mimetype": "application/pdf", "s3key": "dashboards/report-2025-04-15.pdf"}})
 WRONG:   GMAIL_FETCH_EMAILS(user_id="someone@gmail.com", ...)
 WRONG:   GMAIL_SEND_EMAIL(..., attachment="report.pdf", ...) ← missing s3key, invalid structure
 
@@ -805,7 +805,7 @@ STEP 2 — Find or Create Line Items:
   b. For each item: search ZOHO_INVOICE_LIST_ITEMS to find existing item
   c. If found → use item_id and rate from result
   d. If NOT found → Call ZOHO_INVOICE_CREATE_ITEM(item_name, rate, description_optional)
-  e. Build line_items array: [{ "item_id": "...", "quantity": 1, "rate": "..." }, ...]
+  e. Build line_items array: [{{ "item_id": "...", "quantity": 1, "rate": "..." }}, ...]
 
 STEP 3 — Create Invoice with All Required Parameters:
   REQUIRED fields for ZOHO_INVOICE_CREATE_INVOICE:
