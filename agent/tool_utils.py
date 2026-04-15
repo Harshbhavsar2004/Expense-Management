@@ -83,9 +83,17 @@ class SanitizedTool(BaseTool):
         # this causes SDK failures (e.g. SDKFileNotFoundError for attachments).
         # We filter out any such null-like values here.
         args = {
-            k: v for k, v in args.items() 
+            k: v for k, v in args.items()
             if v is not None and str(v).lower() not in ("null", "none")
         }
+
+        # Force the correct Zoho organization ID — the LLM often hallucinates this.
+        # This is the authoritative injection point for all Composio Zoho tool calls.
+        if self.name.startswith("ZOHO_INVOICE_"):
+            zoho_org = os.getenv("ZOHO_ORGANIZATION_ID", "")
+            if zoho_org:
+                args["organization_id"] = zoho_org
+                print(f"[SanitizedTool] Forced organization_id={zoho_org} for {self.name}")
 
         print(f"[SanitizedTool] {self.name} run_async CALLED with args={args}")
         
